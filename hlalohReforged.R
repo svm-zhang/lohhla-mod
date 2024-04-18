@@ -1,0 +1,1711 @@
+#!/usr/bin/env -S Rscript --vanilla
+
+suppressPackageStartupMessages({
+  library(argparse)
+  library(data.table)
+  library(ggplot2)
+  library(moments)
+  library(splitstackshape)
+  library(seqinr)
+  library(Biostrings)
+  library(Rsamtools)
+})
+
+options(width = 600)
+
+plot_theme <- theme(
+  axis.text.x = element_text(size = 14, color = "black"),
+  axis.text.y = element_text(size = 14, color = "black"),
+  axis.title.x = element_text(size = 16, color = "black"),
+  axis.title.y = element_text(size = 16, color = "black"),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.background = element_blank(),
+  axis.line = element_line(colour = "black"),
+  legend.position = c(0.98, 0.98),
+  legend.justification = c("right", "top"),
+  legend.key = element_blank(),
+  legend.text = element_text(size=12)
+)
+grp4_colors <- c("#0072B5FF", "#E18727FF", "#925E9FFF", "#AD002AFF")
+a1_color <- grp4_colors[1]
+a2_color <- grp4_colors[2]
+
+parse_cmd <- function() {
+  parser <- ArgumentParser()
+  #parser$add_argument("--R1",
+  #  metavar = "FILE", type = "character", required = TRUE,
+  #  help = "Specify the tumor R1 Fastq file"
+  #)
+  #parser$add_argument("--R2",
+  #  metavar = "FILE", type = "character", required = TRUE,
+  #  help = "Specify the tumor R2 Fastq file"
+  #)
+  #parser$add_argument("--r1",
+  #  metavar = "FILE", type = "character", required = TRUE,
+  #  help = "Specify the normal R1 Fastq file"
+  #)
+  #parser$add_argument("--r2",
+  #  metavar = "FILE", type = "character", required = TRUE,
+  #  help = "Specify the normal R2 Fastq file"
+  #)
+  parser$add_argument("--subject",
+    metavar = "STR", type = "character", required = TRUE,
+    help = "Specify the subject ID"
+  )
+  #parser$add_argument("--tid",
+  #  metavar = "STR", type = "character", required = TRUE,
+  #  help = "Specify the tumor sample ID"
+  #)
+  #parser$add_argument("--nid",
+  #  metavar = "STR", type = "character", required = TRUE,
+  #  help = "Specify the normal sample ID"
+  #)
+  parser$add_argument("--tbam",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify the tumor bam file"
+  )
+  parser$add_argument("--nbam",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify the normal bam file"
+  )
+  #parser$add_argument("--realn_nbam",
+  #  metavar = "FILE", type = "character",
+  #  help = "Specify the HLA-reaigned normal bam file"
+  #)
+  parser$add_argument("--genome",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify the human genome"
+  )
+  parser$add_argument("--hlabed",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify HLA region in BED"
+  )
+  parser$add_argument("--hlatag",
+    metavar = "FILE", type = "character",
+    help = "Specify HLA kmer tags"
+  )
+  parser$add_argument("--hlares",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify HLA typing results"
+  )
+  parser$add_argument("--tstates",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify file includeing tumor purity and ploidy"
+  )
+  parser$add_argument("--outdir",
+    metavar = "DIR", type = "character", required = TRUE,
+    help = "Specify the output directory"
+  )
+  # this is the old --HLAfastaLoc option
+  parser$add_argument("--indexer",
+    metavar = "FILE", type = "character",
+    default = "novoindex", choices = c("novoindex"),
+    help = "Specify the HLA reference sequence in Fasta"
+  )
+  parser$add_argument("--hlaref",
+    metavar = "FILE", type = "character", required = TRUE,
+    help = "Specify the HLA reference sequence in Fasta"
+  )
+  parser$add_argument("--min_cov",
+    metavar = "INT", type = "integer", default = 30,
+    help = "Specify the minimum coverage at mismatch sites (30)"
+  )
+  parser$add_argument("--kmer",
+    metavar = "INT", type = "integer", default = 38,
+    help = "Specify the kmer size to fish reads (38)"
+  )
+  parser$add_argument("--min_nm",
+    metavar = "INT", type = "integer", default = 1,
+    help = paste(
+      "Specify the minimum number of mismatches",
+      "allowed for reads mapping to HLA alleles (1)"
+    )
+  )
+  parser$add_argument("--threads",
+    metavar = "INT", type = "integer", default = 16,
+    help = "Specify the number of threads (16)"
+  )
+  parser$add_argument("--example",
+    action = "store_true",
+    help = "Specify to run on example data provided by LOHHLA"
+  )
+  # parser$add_argument("--overwrite", action="store_true", help="Specify to overwrite the previous results regardless")
+
+  parser$parse_args()
+}
+
+t_test_with_na <- function(x, alternative = "two.sided", mu = 0) {
+  if (length(x[!is.na(x)]) <= 1) {
+    stat <- NA
+    ci <- c(NA, NA)
+    out <- list(stat, ci)
+    names(out) <- c("stat", "conf.int")
+    out
+  } else {
+    t.test(x, alternative = alternative, mu = mu)
+  }
+}
+
+test_cn_loss_using_log_odds_ratio <- function(x) {
+  if(anyNA(x)) {
+    return(NA)
+  }
+  x <- matrix(round(x), nrow=2)
+  test <- fisher.test(x)
+
+  test$p.value
+}
+
+normalize_hla_seqname <- function(dt) {
+
+  if (! "seqnames" %in% names(dt)) {
+    print("[ERROR] Cannot find seqnames column in the given data table")
+    quit(status = 1)
+  }
+  dt[, seqnames := gsub("hla_", "", seqnames)]
+  dt[, hla_gene := unlist(strsplit(seqnames, "_"))[1], by=seq_len(nrow(dt))]
+  dt[, seqnames := gsub(
+    paste(hla_gene, "_", sep=""),
+    paste(toupper(hla_gene), "*", sep=""),
+    seqnames
+  ),
+    by = seq_len(nrow(dt))
+  ]
+  dt[, seqnames := gsub("_", ":", seqnames)]
+  dt[, hla_gene := NULL]
+
+  dt
+}
+
+check_missing_cols_before_plot <- function(cols, to_check) {
+
+  missing <- cols[which(! to_check %in% cols)]
+  if (length(missing) > 0) {
+    missing <- paste(missing, collapse = ",")
+    print(paste("[ERROR] Cannot find required cols: ", missing, sep=""))
+    quit(status = 1)
+  }
+
+}
+plot_cov <- function(
+  dt, out_file,
+  colors=c("#0072B5FF", "#E18727FF"),
+  xlab="HLA Positions", ylab="Depth", width=12, height=5
+) {
+
+  print("[INFO] Plot coverage across positions")
+  check_missing_cols_before_plot(
+    cols = names(dt),
+    to_check = c("seqnames", "dp", "start")
+  )
+  alleles <- unique(dt$seqnames)
+  if (length(alleles) != 2) {
+    print(paste(
+      "[ERROR] Coverage plot expects exact 2 alleles. ",
+      length(alleles),
+      " given: ",
+      alleles,
+      sep=""
+    ))
+    quit(status = 1)
+  }
+  a1 <- alleles[1]
+  a2 <- alleles[2]
+  a1_color <- colors[1]
+  a2_color <- colors[2]
+  max_x <- max(dt$start)
+  m <- ggplot(dt, aes(x=start, y=dp)) +
+    geom_point(aes(color=seqnames), stroke = NA) +
+    scale_color_manual(
+      name="",
+      values = c(a1_color, a2_color),
+      limits = c(a1, a2)
+    ) +
+    scale_x_continuous(expand=c(0, 0), limits = c(0, max_x+200)) +
+    labs(x = xlab, y = ylab) +
+    plot_theme
+  ggsave(out_file, m, width=width, height=height)
+  print(paste("[INFO] Save plot to file: ", out_file, sep=""))
+
+}
+
+plot_logr <- function(
+  dt, out_file,
+  colors=c("#0072B5FF", "#E18727FF"),
+  xlab="HLA Positions", ylab="logR", width=12, height=5
+) {
+
+  print("[INFO] Plot logR across positions")
+  check_missing_cols_before_plot(
+    cols = names(dt),
+    to_check = c("seqnames", "logR", "start", "logR_combined_bin")
+  )
+  alleles <- unique(dt$seqnames)
+  if (length(alleles) != 2) {
+    print(paste(
+      "[ERROR] Coverage plot expects exact 2 alleles. ",
+      length(alleles),
+      " given: ",
+      alleles,
+      sep=""
+    ))
+    quit(status = 1)
+  }
+  a1 <- alleles[1]
+  a2 <- alleles[2]
+  a1_median_logr <- median(dt[seqnames==a1]$logR, na.rm = TRUE)
+  a2_median_logr <- median(dt[seqnames==a2]$logR, na.rm = TRUE)
+  a1_color <- colors[1]
+  a2_color <- colors[2]
+  max_x <- max(dt$start)
+  max_y <- max(dt$logR)
+  min_y <- min(dt$logR)
+  m <- ggplot(dt, aes(x=start, y=logR)) +
+    geom_point(aes(color=seqnames), stroke = NA) +
+    geom_line(data=dt, aes(x=start, y=logR_combined_bin), color="#1B1919FF") +
+    geom_hline(aes(yintercept=a1_median_logr), color=a1_color, linetype="dashed") +
+    geom_hline(aes(yintercept=a2_median_logr), color=a2_color, linetype="dashed") +
+    scale_color_manual(
+      name="",
+      values = c(a1_color, a2_color),
+      limits = c(a1, a2)
+    ) +
+    scale_x_continuous(expand=c(0, 0), limits = c(0, max_x+200)) +
+    scale_y_continuous(expand=c(0, 0), limits = c(min_y-0.3, max_y+0.5)) +
+    labs(x = xlab, y = ylab) +
+    plot_theme
+  ggsave(out_file, m, width=width, height=height)
+  print(paste("[INFO] Save plot to file: ", out_file, sep=""))
+
+}
+
+plot_baf <- function(
+  dt, out_file,
+  colors=c("#0072B5FF", "#E18727FF"),
+  xlab="HLA Positions", ylab="B-allele frequency", width=12, height=5
+) {
+
+  print("[INFO] Plot BAF across mismatch positions")
+  check_missing_cols_before_plot(
+    cols = names(dt),
+    to_check = c(
+      "a1_seqnames", "a2_seqnames", "a1_n_dp", "a2_n_dp",
+      "a1_start", "baf", "baf_combined"
+    )
+  )
+  a1 <- unique(dt$a1_seqnames)
+  a2 <- unique(dt$a2_seqnames)
+  dt[, baf_n := a1_n_dp / (a1_n_dp+a2_n_dp)]
+  max_x <- max(dt$a1_start)
+  m <- ggplot() +
+    geom_point(data=dt, aes(x=a1_start, y=baf, color = a1_seqnames), stroke = NA) +
+    geom_point(data=dt, aes(x=a1_start, y=baf_combined), color=a1_color, shape=3) +
+    geom_point(data=dt, aes(x=a1_start, y=baf_n), color="grey", stroke = NA, alpha = 0.8) +
+    geom_hline(aes(yintercept=0.5), color="grey", linetype="dashed") +
+    scale_color_manual(
+      name="",
+      values = c(a1_color),
+      limits = c(a1)
+    ) +
+    scale_x_continuous(expand=c(0, 0), limits = c(0, max_x+200)) +
+    scale_y_continuous(expand=c(0, 0), limits = c(0, 1.05)) +
+    labs(x = "Position", y = "B-allele Frequency") +
+    plot_theme
+  ggsave(out_file, m, width=width, height=height)
+  print(paste("[INFO] Save plot to file: ", out_file, sep=""))
+
+}
+
+parse_file_path <- function(file) {
+  if (!file.exists(file)) {
+    print(paste("[ERROR] Cannot find the file provided: ", file, sep = ""))
+    quit(status = 1)
+  }
+  file <- normalizePath(file, mustWork = TRUE)
+}
+
+parse_dir_path <- function(dir, create) {
+  if (!dir.exists(dir)) {
+    if (create != TRUE) {
+      print(paste("[ERROR] Cannot find the file provided: ", dir, sep = ""))
+    } else {
+      dir.create(dir, recursive = TRUE)
+      dir <- normalizePath(dir, mustWork = TRUE)
+    }
+  }
+}
+
+get_read_group_from_bam <- function(bam) {
+  bf <- BamFile(bam)
+
+  rg <- scanBamHeader(bf)$text$`@RG`
+  if (is.null(rg) || is.na(rg)) {
+    print(paste("[ERROR] Cannot find the read group (@RG) in the BAM file: ",
+      bam,
+      sep = ""
+    ))
+    quit(status = 1)
+  }
+  rg
+}
+
+get_sm_from_rg <- function(rg) {
+  sm <- rg[which(grepl("^SM", rg))]
+  if (length(sm) == 0) {
+    print(paste("[ERROR] Cannot find the SM in the @RG: ",
+      paste(rg, collapse = "\t"),
+      sep = ""
+    ))
+    quit(status = 1)
+  }
+  sm <- gsub("^SM:", "", sm)
+  sm
+}
+
+run_cmd <- function(cmd, args, stdout, stderr) {
+  if (is.logical(stdout)) {
+    print("[ERROR] run_cmd function does not capture stdout to a variable")
+    print("[ERROR] Please directly use system2 function instead")
+    quit(status = 1)
+  }
+
+  rc <- system2(
+    command = cmd,
+    args = args,
+    stdout = stdout,
+    stderr = stderr,
+    wait = TRUE
+  )
+
+  if (is.null(rc) && stdout != TRUE) {
+    # something is wrong
+    print(paste("[ERROR] no command was executed.",
+      "Return code returns NULL. Please check",
+      sep = ""
+    ))
+    quit(status = 1)
+  }
+
+  if (rc != 0) {
+    print(paste("[ERROR]: Running ", cmd, " return exit code ", rc, sep = ""))
+    print(paste("Plaese check STDOUT ", stdout, " for details", sep = ""))
+    print(paste("Plaese check STDERR ", stderr, " for details", sep = ""))
+    quit(status = 1)
+  }
+}
+
+build_kmer_tags <- function(hla_ref_fasta, kmer, outdir, threads = 8) {
+  print(paste("[INFO] Counting ", kmer, "-kmer from ", hla_ref_fasta, sep = ""))
+  mer_jf <- file.path(outdir, "kmer.counts.jf")
+  cmd <- "jellyfish"
+  args <- c(
+    "count", "-m", kmer, "-s", "100M",
+    "-t", threads, "-o", mer_jf, hla_ref_fasta
+  )
+  run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
+  print(paste("[INFO] Counting ", kmer, "-kmer from ",
+    hla_ref_fasta, "[DONE]",
+    sep = ""
+  ))
+
+  print(paste("[INFO] Dumping ", kmer, "-kmer to Fasta", sep = ""))
+  mer_jf_fa <- file.path(outdir, "kmer.counts.fa")
+  cmd <- "jellyfish"
+  args <- c("dump", "-o", mer_jf_fa, mer_jf)
+  run_cmd(cmd = cmd, args = args, stdout = "/dev/null", stderr = "/dev/null")
+  print(paste("[INFO] Dumping ", kmer, "-kmer to Fasta [DONE]", sep = ""))
+
+  print("[INFO] Extracting kmer tags from Fasta")
+  kmer_tag <- file.path(outdir, "kmer.tags")
+  cmd <- "grep"
+  args <- c("-v", "\"^>\"", mer_jf_fa)
+  run_cmd(cmd = cmd, args = args, stdout = kmer_tag, stderr = "/dev/null")
+  print("[INFO] Extracting kmer tags from Fasta [DONE]")
+
+  kmer_tag
+}
+
+count_n_reads_from_bam <- function(
+  bam, count_dup = FALSE, only_proper = TRUE, only_primary = TRUE,
+  tagfilter = list()
+) {
+  count_n_reads_df <- countBam(
+    bam,
+    param = ScanBamParam(flag = scanBamFlag(
+      isDuplicate = count_dup,
+      isProperPair = only_proper,
+      isSecondaryAlignment = !only_primary
+    ),
+    tagFilter=tagfilter
+  ))
+  count_n_reads_df$records
+}
+
+get_hla_alleles <- function(hla_res, hla_ref_fasta) {
+  print("[INFO] Loading HLA typing result")
+  expected_cols_in_hla_res <- c(
+    "SampleID", "HLA-A_1", "HLA-A_2",
+    "HLA-B_1", "HLA-B_2", "HLA-C_1", "HLA-C_2"
+  )
+  hla_res_dt <- fread(hla_res)
+  print("[INFO] Loading HLA typing result [DONE]")
+
+  # to make sure any missing data to be replaced by dot
+  # you can trust anything, sorry
+  for (i in names(hla_res_dt)) {
+    hla_res_dt[is.na(get(i)), (i) := "."]
+  }
+
+  # make sure we have the right columns to work with
+  if (!all.equal(names(hla_res_dt), expected_cols_in_hla_res)) {
+    print("[ERROR] Missing expected columns in the HLA typing result table")
+    print(paste(
+      "[ERROR] Expected columns are: ", expected_cols_in_hla_res,
+      sep = ""
+    ))
+    quit(status = 1)
+  }
+
+  hla_res_dt <- melt(
+    data = hla_res_dt,
+    id.vars = "SampleID",
+    variable.name = "HLA_Alleles", value.name = "Allele_Type"
+  )
+  hla_res_dt[, "HLA_Alleles" := ifelse(grepl("^HLA-A", HLA_Alleles), "HLA-A", # nolint
+    ifelse(grepl("^HLA-B", HLA_Alleles), "HLA-B",
+      ifelse(grepl("^HLA-C", HLA_Alleles), "HLA-C", "Other")
+    )
+  )]
+  hla_res_dt <- hla_res_dt[,
+    .(Allele_Type = .(Allele_Type)), # nolint
+    by = .(HLA_Alleles) # nolint
+  ]
+  hla_alleles <- lapply(
+    split(hla_res_dt, as.factor(hla_res_dt$HLA_Alleles)),
+    function(x) unlist(x$Allele_Type)
+  )
+
+  for (hla_gene in names(hla_alleles)) {
+    hla_alleles[[hla_gene]] <- hla_alleles[[hla_gene]][
+      !is.na(hla_alleles[[hla_gene]])
+    ]
+    alleles <- unique(hla_alleles[[hla_gene]])
+    if (length(alleles) == 1) {
+      if (alleles == ".") {
+        print(paste(
+          "[INFO] ", hla_gene, " allele missing from the HLA typing result",
+          sep = ""
+        ))
+      } else {
+        print(paste(
+          "[INFO] ", hla_gene, " is homozygous for ", alleles,
+          sep = ""
+        ))
+      }
+      hla_alleles[[hla_gene]] <- NULL
+      print(paste("[INFO] ", hla_gene, " wont be analyzed for LOH", sep = ""))
+    } else if (length(alleles) > 2) {
+      print(paste(
+        "[ERROR] Only expect diploid ", hla_gene,
+        " gene. But see ", alleles,
+        sep = ""
+      ))
+      quit(status = 1)
+    } else {
+      hla_alleles[[hla_gene]] <- check_if_alleles_in_ref(
+        alleles = alleles, hla_ref_fasta = hla_ref_fasta
+      )
+    }
+  }
+
+  if (length(hla_alleles) == 0) {
+    print("[INFO] Found no HLA genes to do LOH analysis")
+    print("[INFO] Take a rest now")
+    quit(status = 0)
+  }
+
+  hla_alleles
+}
+
+check_if_alleles_in_ref <- function(alleles, hla_ref_fasta) {
+  print(paste(
+    "[INFO] Checking if ", paste(alleles, collapse=", "),
+    " alleles are defined in the reference",
+    sep = ""
+  ))
+
+  missing_ones <- alleles[!which(alleles %in% names(hla_ref_fasta))]
+  if (length(missing_ones) > 0) {
+    print(paste(
+      "[WARNING] Found no reference sequence for: ",
+      paste(missing_ones, collapse = ","),
+      sep = ""
+    ))
+    print("[WARNING] Trying to find alternatives")
+    to_replace <- c()
+    for (missing_one in missing_ones) {
+      alt <- grep(
+        pattern = missing_one, x = names(hla_ref_fasta), value = TRUE
+      )[1]
+      if (!is.na(alt)) {
+        print(paste(
+          "[WARNING] Replacing ", missing_one, "with", alt,
+          sep = ""
+        ))
+        allele_type[which(allele_type == missing_one)] <- alt
+        to_replace <- c(to_replace, alt)
+      } else {
+        print(paste(
+          "[WARNING] Found no alternative for ", missing_one,
+          sep = ""
+        ))
+        to_replace <- c(to_replace, missing_one)
+      }
+    }
+    # if any of the missing ones still in to_replace, it means they
+    # found no alternative from above for loop
+    if (any(missing_ones %in% to_replace)) {
+      still_missing <- missing_ones[which(missing_ones %in% to_replace)]
+      print(paste(
+        "[INFO] ", still_missing, " cannot find alternative to replace"
+      ))
+      print(paste("[INFO] ", alleles, " wont be analyzed for LOH", sep = ""))
+      alleles <- NULL
+    }
+  } else {
+    print(paste(
+      "[INFO] Found reference sequences for ",
+      paste(alleles, collapse = ", "),
+      sep = ""
+    ))
+  }
+
+  alleles
+}
+
+index_hla_fasta <- function(subject, fasta, indexer, outdir, threads = 1) {
+  if (indexer == "novoindex") {
+    suffix <- ".nix"
+  }
+
+  hla_ref_index <- file.path(
+    outdir,
+    paste(subject,
+      ".subject.hla", suffix,
+      sep = ""
+    )
+  )
+
+  if (!file.exists(hla_ref_index)) {
+    print("[INFO] Generating index for the HLA Fasta sequences")
+    if (indexer == "novoindex") {
+      cmd <- "novoindex"
+      args <- c("-t", threads, hla_ref_index, fasta)
+    }
+    stdout <- file.path(outdir, paste(subject, indexer, "stdout", sep = "."))
+    stderr <- file.path(outdir, paste(subject, indexer, "stderr", sep = "."))
+    run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
+    print("[INFO] Generating index for the patient HLA sequence [DONE]")
+  } else {
+    print("[INFO] Found subject HLA sequence index")
+    print("[INFO] Skipping generating index")
+  }
+
+  hla_ref_index
+}
+
+realign_hla_new <- function(
+    sid, r1, r2, hla_ref, outdir, nproc = 1) {
+  realign_bam <- file.path(
+    outdir,
+    paste(sid, ".fished.realn.so.mdup.bam", sep = "")
+  )
+  if (!file.exists(realign_bam)) {
+    print(paste("[INFO] Realigning HLA for sample ", sid, sep = ""))
+    cmd <- "/home/simo/code/jshla/jspolysolver/optitype_hla_realign.sh"
+    args <- c(
+      "--r1", r1,
+      "--r2", r2,
+      "--hla_ref", hla_ref,
+      "--sample", sid,
+      "--outdir", outdir,
+      "--mdup",
+      "--nproc", nproc
+    )
+    stdout <- file.path(outdir, paste(sid, "hla.realn.stdout", sep = "."))
+    stderr <- file.path(outdir, paste(sid, "hla.realn.stderr", sep = "."))
+    run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
+    print(paste("[INFO] Realigning HLA for sample ", sid, " [DONE]", sep = ""))
+  } else {
+    print(paste("[INFO] Found realigned BAM for sample ", sid, sep = ""))
+    print("[INFO] Skipping realignment")
+  }
+
+  realign_bam
+}
+
+realign_hla <- function(
+    sid, bam, genome, hla_index,
+    tags, bed, outdir, threads = 1) {
+  realign_bam <- file.path(
+    outdir,
+    paste(sid, ".fished.realn.so.mdup.bam", sep = "")
+  )
+  if (!file.exists(realign_bam)) {
+    print(paste("[INFO] Realigning HLA for sample ", sid, sep = ""))
+    cmd <- "/home/simo/code/jshla/jspolysolver/polysolver_hla_realign.sh"
+    args <- c(
+      "--bam", bam,
+      "--tag", tags,
+      "--genome", genome,
+      "--nv_idx", hla_index,
+      "--bed", bed,
+      "--sample", sid,
+      "--outdir", outdir,
+      "--nproc", threads
+    )
+    stdout <- file.path(outdir, paste(sid, "hla.realn.stdout", sep = "."))
+    stderr <- file.path(outdir, paste(sid, "hla.realn.stderr", sep = "."))
+    run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
+    print(paste("[INFO] Realigning HLA for sample ", sid, " [DONE]", sep = ""))
+  } else {
+    print(paste("[INFO] Found realigned BAM for sample ", sid, sep = ""))
+    print("[INFO] Skipping realignment")
+  }
+
+  realign_bam
+}
+
+paste_vector <- function(v, sep = "") {
+  vt <- v[1]
+  if (length(v) > 1) {
+    for (g in 2:length(v)) {
+      vt <- paste(vt, v[g], sep = sep)
+    }
+  }
+  vt <- paste(vt, " EnD", sep = "")
+  out_v <- sub(" EnD", "", vt)
+  out_v <- sub("NA , ", "", out_v)
+  out_v <- sub(" , NA", "", out_v)
+  out_v <- sub(" , NA , ", " , ", out_v)
+  out_v
+}
+
+get_mm_bw_alleles <- function(alignment, chunksize = 60, returnlist = FALSE) {
+  a1_aln <- pattern(alignment) # Get the alignment for the first sequence
+  a2_aln <- subject(alignment) # Get the alignment for the second sequence
+
+  a1_aln_start <- start(pattern(alignment))
+  a1_aln_end <- end(pattern(alignment))
+  a2_aln_start <- start(subject(alignment))
+  a2_aln_end <- end(subject(alignment))
+
+  k <- 1 + a1_aln_start - 1
+  # a1_aln_seq is a character vector showing the alignment from a1 pov
+  a1_aln_seq <- unlist(strsplit(as.character(a1_aln), split = ""))
+  seq1_positions <- c()
+  for (char in a1_aln_seq) {
+    if (char %in% c("C", "G", "A", "T")) {
+      seq1_positions <- c(seq1_positions, k)
+      k <- k + 1
+      next
+    }
+
+    if (char %in% c("-")) {
+      seq1_positions <- c(seq1_positions, k)
+      next
+    }
+  }
+
+  k <- 1 + a2_aln_start - 1
+  a2_aln_seq <- unlist(strsplit(as.character(a2_aln), split = ""))
+  seq2_positions <- c()
+  for (char in a2_aln_seq) {
+    if (char %in% c("C", "G", "A", "T")) {
+      seq2_positions <- c(seq2_positions, k)
+      k <- k + 1
+      next
+    }
+
+    if (char %in% c("-")) {
+      seq2_positions <- c(seq2_positions, k)
+      next
+    }
+  }
+
+  seq1_diff <- seq1_positions[a1_aln_seq != a2_aln_seq]
+  seq2_diff <- seq2_positions[a1_aln_seq != a2_aln_seq]
+
+  type1_diff <- rep(1, length(seq1_diff))
+  type1_diff[which(a1_aln_seq[a1_aln_seq != a2_aln_seq] %in% "-")] <- 2
+
+  type2_diff <- rep(1, length(seq2_diff))
+  type2_diff[which(a2_aln_seq[a2_aln_seq != a1_aln_seq] %in% "-")] <- 2
+
+  aln_dt <- data.table(
+    seq1_diff = seq1_diff,
+    seq2_diff = seq2_diff,
+    type1_diff = type1_diff,
+    type2_diff = type2_diff
+  )
+  aln_dt <- aln_dt[type1_diff != 2 & type2_diff != 2]
+
+  out <- list()
+  out$diffSeq1 <- aln_dt$seq1_diff
+  out$diffSeq2 <- aln_dt$seq2_diff
+  out$a1_aln_start <- a1_aln_start
+  out$a1_aln_end <- a1_aln_end
+  out$a2_aln_start <- a2_aln_start
+  out$a2_aln_end <- a2_aln_end
+
+  out
+}
+
+get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
+  a1_seq <- paste_vector(toupper(a1_seq), sep = "")
+  a2_seq <- paste_vector(toupper(a2_seq), sep = "")
+  sigma <- nucleotideSubstitutionMatrix(
+    match = 2, mismatch = -1, baseOnly = TRUE
+  )
+  pair_aln <- pairwiseAlignment(
+    a1_seq, a2_seq,
+    substitutionMatrix = sigma, gapOpening = -2, gapExtension = -4,
+    scoreOnly = FALSE, type = "local"
+  )
+  mm <- get_mm_bw_alleles(pair_aln, returnlist = TRUE)
+
+  mm
+}
+
+get_seqinfo_from_bam_header <- function(bam) {
+  bamf <- BamFile(file = bam)
+  bam_header <- scanBamHeader(bamf, what = "targets")
+  bam_header$targets
+}
+
+check_if_alleles_in_seqinfo <- function(alleles, bam) {
+  seqinfo <- get_seqinfo_from_bam_header(bam)
+  for (allele in alleles) {
+    if (!allele %in% names(seqinfo)) {
+      print(paste(
+        "[ERROR] ",
+        allele,
+        " is not in the sequence header of the provided BAM ",
+        bam,
+        sep = ""
+      ))
+      quit(status = 1)
+    }
+  }
+}
+
+get_indel_length <- function(cigar) {
+  tmp <- unlist(strsplit(gsub("([0-9]+)", "~\\1~", cigar), "~"))
+  ins <- grep(pattern = "I", x = tmp)
+  del <- grep(pattern = "D", x = tmp)
+  total <- sum(as.numeric(tmp[(ins - 1)])) + sum(as.numeric(tmp[del - 1]))
+  total
+}
+
+run_mpileup <- function(bam, hlafa, outdir) {
+  # FIXME: samtools mpileup error message cannot be captured properly this way
+  stderr <- file.path(outdir, "samtools.mpileup.stderr")
+  dt <- fread(text = system2(
+    command = "samtools",
+    args = c(
+      "mpileup", "-f", hlafa, "--rf", 2, "--output-QNAME", "--output-extra", "FLAG", bam
+    ),
+    stdout = TRUE,
+    stderr = stderr,
+    wait = TRUE
+  ), select = c(1, 2, 3, 4, 7, 8))
+
+  names(dt) <- c("seqnames", "start", "ref", "dp", "qname", "flag")
+
+  dt
+}
+
+#' Function to calculate HLA allele coverage
+#'
+get_allele_coverage <- function(alleles, bam, hlafa, outdir, sid, min_necnt) {
+  allele_coverage <- list()
+  outdir <- file.path(outdir, paste(sid, "/", sep = ""))
+  parse_dir_path(dir = outdir, create = TRUE)
+  for (allele in alleles) {
+    seqinfo <- get_seqinfo_from_bam_header(bam = bam)
+
+
+    bamf <- BamFile(file = bam)
+
+    allele_seq_ln <- seqinfo[which(names(seqinfo) == allele)]
+    allele_to_scan <- GenomicRanges::GRanges(
+      seqnames = allele,
+      ranges = IRanges::IRanges(start = 1, end = allele_seq_ln)
+    )
+    scan_param <- ScanBamParam(
+      flag = scanBamFlag(),
+      what = c("qname", "flag", "cigar"),
+      which = allele_to_scan,
+      tag = "NM"
+    )
+    obam <- file.path(outdir, paste(sid, allele, "filt.bam", sep = "."))
+    aln <- scanBam(bamf, param = scan_param)
+
+    aln_dt <- data.table(
+      qname = aln[[1]]$qname,
+      cigar = aln[[1]]$cigar,
+      flag = aln[[1]]$flag,
+      nm = unlist(aln[[1]]$tag)
+    )
+    aln_dt[, read_idx := ifelse(
+      bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
+      ),
+      by=seq_len(nrow(aln_dt))
+    ]
+    if (nrow(aln_dt) == 0) {
+      # this prevents the case in which users provided random HLA alleles
+      # FIXME: need to check this at the realignment step
+      # a bit too late here
+      print(paste(
+        "[ERROR] Found no alignments to allele ", allele, " in sample ", sid,
+        sep = ""
+      ))
+      print("[ERRROR] Please check the provided HLA typing results")
+      quit(status = 1)
+    } else {
+      cigar <- NULL # this is to avoid "no visible binding for cigar"
+      n_ins <- n_del <- n_mm <- n_ecnt <- NULL
+      nread_per_frag <- NULL
+      aln_dt[, "n_ins" := length(
+        grep(pattern = "I", unlist(strsplit(cigar, "")))
+      ), by = seq_len(nrow(aln_dt))]
+      aln_dt[, "n_del" := length(
+        grep(pattern = "D", unlist(strsplit(cigar, "")))
+      ), by = seq_len(nrow(aln_dt))]
+      aln_dt[, "n_mm" := nm - apply(.SD, 1, get_indel_length), .SDcols = "cigar"]
+      aln_dt[, "n_ecnt" := n_mm + n_ins + n_del]
+      aln_dt <- aln_dt[n_ecnt <= min_necnt]
+      aln_dt[, "nread_per_frag" := .N, by = "qname"]
+      aln_dt <- aln_dt[nread_per_frag == 2]
+      filter <- S4Vectors::FilterRules(
+        list(function(x) x$qname %in% aln_dt$qname)
+      )
+      filterBam(bamf, obam, filter = filter, param = scan_param)
+      cov_dt <- run_mpileup(bam = obam, hlafa = hlafa, outdir = outdir)
+    }
+
+    allele_coverage[[allele]] <- cov_dt
+  }
+
+  allele_coverage
+}
+
+get_once_count_at_mm <- function(hla_cov_dt, allele, mm_pos) {
+  hla_cov_dt <- hla_cov_dt[start %in% mm_pos]
+  if(nrow(hla_cov_dt) == 0) {
+    return(data.table(
+      seqnames = allele,
+      start = mm_pos,
+      ref = NA,
+      dp = 0,
+      qname = "",
+      flag = 0
+    ))
+  }
+  # each row one read covering one position
+  hla_uniq_cov_dt <- cSplit(
+    hla_cov_dt, c("qname", "flag"),
+    sep = ",",
+    direction = "long", fixed = TRUE, type.convert = FALSE
+  )
+  hla_uniq_cov_dt[, read_idx := ifelse(
+    bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
+  ),
+  by=seq_len(nrow(hla_uniq_cov_dt))
+  ]
+  hla_uniq_cov_dt[, qname := paste(qname, read_idx, sep="/")]
+  hla_uniq_cov_dt[, read_idx := NULL]
+
+  # unique so that each read contribue only once
+  hla_uniq_cov_dt <- unique(hla_uniq_cov_dt, by = "qname")
+  # count the # reads per position
+  hla_uniq_cov_dt[, "udp" := .N, by = list(start)]
+  # remove duplicate positions
+  hla_uniq_cov_dt <- unique(hla_uniq_cov_dt, by = "start")
+  # join back with the input dt to add udp column
+  hla_uniq_cov_dt <- merge(
+    hla_cov_dt,
+    hla_uniq_cov_dt[, c("start", "udp")],
+    by = "start", all.x = TRUE
+  )
+  # some positions can have no read covering after the unique operation
+  # fill in 0
+  #dp <- NULL # this is to avoid "no visible binding for global variable..."
+  hla_uniq_cov_dt[, dp := ifelse(is.na(udp), 0, udp)]
+  hla_uniq_cov_dt[, ":="(dp = dp + 1, udp = NULL)]
+
+  hla_uniq_cov_dt
+  #hla_uniq_cov_dt[, c("seqnames", "start", "ref", "dp")]
+}
+
+binning_interval_to_dt <- function(start_pos, end_pos, bin_size) {
+
+  bin_breaks <- seq(start_pos, end_pos, by = bin_size)
+  # the last bin can be less than 150, so merged with second last bin
+  # end_pos + 2 was from original code
+  bin_breaks <- c(bin_breaks[-length(bin_breaks)], end_pos + 2)
+  istarts <- bin_breaks[-length(bin_breaks)]
+  # this makes sure no end position of last bin not repeating as
+  # start position in the next bin
+  istarts[2:length(istarts)] <- istarts[2:length(istarts)] + 1
+  iends <- bin_breaks[2:length(bin_breaks)]
+  bin_dt <- data.table(start = istarts, end = iends)
+  bin_dt[, "bin" := paste(start, end, sep = "-")]
+
+  bin_dt
+}
+
+make_bins <- function(start_pos, end_pos, allele_length, bin_size) {
+
+  bin_breaks <- seq(start_pos, end_pos, by = bin_size)
+  # the last bin can be less than 150, so merged with second last bin
+  # end_pos + 2 was from original code
+  bin_breaks <- c(bin_breaks[-length(bin_breaks)], end_pos + 2)
+  istarts <- bin_breaks[-length(bin_breaks)]
+  # this makes sure no end position of last bin not repeating as
+  # start position in the next bin
+  istarts[2:length(istarts)] <- istarts[2:length(istarts)] + 1
+  iends <- bin_breaks[2:length(bin_breaks)]
+  indices <- seq(1, length(istarts))
+
+  if (start_pos > 2) {
+    istarts <- c(1, istarts)
+    iends <- c(start_pos - 1, iends)
+    indices <- c(0, indices)
+  }
+  if (allele_length > max(iends)) {
+    istarts <- c(istarts, max(iends) + 1)
+    iends <- c(iends, allele_length)
+    indices <- c(indices, allele_length+1)
+  }
+
+  bin_dt <- data.table(start = istarts, end = iends, bin = indices)
+  bin_dt[, end := ifelse(end > allele_length, allele_length, end)]
+
+  bin_dt
+}
+
+collate_tumor_and_normal_cov_per_allele <- function(
+  t_allele_cov_dt, n_allele_cov_dt, allele, mulfactor
+) {
+
+  setkey(t_allele_cov_dt, start, ref)
+  setkey(n_allele_cov_dt, start, ref)
+  allele_cov_dt <- t_allele_cov_dt[n_allele_cov_dt]
+  allele_cov_dt[, seqnames := ifelse(is.na(seqnames), allele, seqnames)]
+  allele_cov_dt[, ":="(end = start, t_dp = dp, n_dp = i.dp)] # nolint
+  allele_cov_dt[, ":="(
+    i.seqnames = NULL, dp = NULL, i.dp = NULL, qname = NULL, i.qname = NULL,
+    flag = NULL, i.flag = NULL
+  )]
+  #allele_cov_dt[, "logR" := log2((t_dp / n_dp) * mulfactor)] # nolint
+
+  allele_cov_dt
+}
+
+get_bined_logR_estimate_per_allele <- function(
+  allele_cov_dt, bin_dt, allele, mulfactor
+) {
+
+  # make granges for allele coverage dt and bins
+  tmp_gr <- GenomicRanges::makeGRangesFromDataFrame(allele_cov_dt)
+  bin_dt[, "seqnames" := allele]
+  bin_dt[, "bin_index" := seq(1, nrow(bin_dt))]
+  bin_gr <- GenomicRanges::makeGRangesFromDataFrame(
+    bin_dt,
+    keep.extra.columns = TRUE
+  )
+  ovl <- GenomicRanges::findOverlaps(tmp_gr, bin_gr)
+  allele_cov_dt[S4Vectors::queryHits(ovl), c("bin", "bin_index")] <- bin_dt[
+    S4Vectors::subjectHits(ovl), c("bin", "bin_index")
+  ]
+  allele_cov_dt[, end := NULL]
+
+  allele_cov_dt
+}
+
+binning <- function(
+  allele_cov_dt, bin_dt, allele
+) {
+  # make granges for allele coverage dt and bins
+  tmp_gr <- GenomicRanges::makeGRangesFromDataFrame(allele_cov_dt)
+  bin_dt[, "seqnames" := allele]
+  bin_gr <- GenomicRanges::makeGRangesFromDataFrame(
+    bin_dt,
+    keep.extra.columns = TRUE
+  )
+  ovl <- GenomicRanges::findOverlaps(tmp_gr, bin_gr)
+  allele_cov_dt[S4Vectors::queryHits(ovl), "bin"] <- bin_dt[
+    S4Vectors::subjectHits(ovl), "bin"
+  ]
+  allele_cov_dt[, end := NULL]
+
+  allele_cov_dt
+}
+
+call_hla_loh <- function(
+    alleles, tbam, nbam, subj_hla_ref_fasta, outdir,
+    purity, ploidy, mulfactor, min_dp, min_necnt,
+    tid = "example_tumor", nid = "example_normal", gamma = 1) {
+
+  alleles_str <- paste(alleles, collapse = " and ")
+  print(paste("[INFO] Analyze LOH for ", alleles_str, sep = ""))
+  a1 <- alleles[1]
+  a2 <- alleles[2]
+
+  hla_seq <- read.fasta(subj_hla_ref_fasta)
+  a1_seq <- hla_seq[[a1]]
+  a2_seq <- hla_seq[[a2]]
+  print(paste(
+    "[INFO] Align sequences between ", alleles_str, sep = ""))
+  mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
+
+  if (length(mm$diffSeq1) == 0) {
+    print(paste(
+      "[INFO] there is no difference between the two alleles",
+      a1, a2,
+      sep = " "
+    ))
+    print("[INFO] no call will be made. Move to the next HLA gene")
+    return
+  }
+
+  if (length(mm$diffSeq1) < 5) {
+    print("[WARN] HLA alleles are similar (less than 5 mismatch positions)")
+    print("[WARN] Keep that in mind when considering results")
+  }
+
+  check_if_alleles_in_seqinfo(alleles, tbam)
+  check_if_alleles_in_seqinfo(alleles, nbam)
+
+  print(paste(
+    "[INFO] Get coverage for ", alleles_str, " in tumor", sep = ""
+  ))
+  t_hla_cov <- get_allele_coverage(
+    alleles = alleles,
+    bam = tbam,
+    hlafa = subj_hla_ref_fasta,
+    outdir = outdir,
+    sid = tid,
+    min_necnt = min_necnt
+  )
+  print(paste(
+    "[INFO] Get coverage for ", alleles_str, " in normal", sep = ""
+  ))
+  n_hla_cov <- get_allele_coverage(
+    alleles = alleles,
+    bam = nbam,
+    hlafa = subj_hla_ref_fasta,
+    outdir = outdir,
+    sid = nid,
+    min_necnt = min_necnt
+  )
+  n_hla_cov[[a1]] <- n_hla_cov[[a1]][dp > min_dp]
+  t_hla_cov[[a1]] <- t_hla_cov[[a1]][start %in% n_hla_cov[[a1]]$start]
+  n_hla_cov[[a2]] <- n_hla_cov[[a2]][dp > min_dp]
+  t_hla_cov[[a2]] <- t_hla_cov[[a2]][start %in% n_hla_cov[[a2]]$start]
+
+  if (nrow(n_hla_cov[[a1]]) == 0 || nrow(n_hla_cov[[a2]]) == 0) {
+    print("[INFO] Found no coverage in normal for either allele")
+    print("[INFO] Move to next HLA gene")
+    return(
+      data.table(
+        "HLA_A1" = a1, "HLA_A2" = a2,
+        "HLA_A1_CN" = NA,
+        "HLA_A1_CN_Lower" = NA,
+        "HLA_A1_CN_Upper" = NA,
+        "HLA_A2_CN" = NA,
+        "HLA_A2_CN_Lower" = NA,
+        "HLA_A2_CN_Upper" = NA,
+        "HLA_A1_Median_LogR" = NA,
+        "HLA_A2_Median_LogR" = NA,
+        "HLA_A1_MM_Median_LogR" = NA,
+        "HLA_A2_MM_Median_logR" = NA,
+        "Median_BAF" = NA,
+        "HLA_MM_Once_LogR_Paired_Pvalue" = NA,
+        "HLA_MM_Once_LogR_Unpaired_Pvalue" = NA,
+        "Num_MM" = length(mm$diffSeq1),
+        "Num_Bins" = NA,
+        "Num_CN_Loss_Supporting_Bins" = NA
+      )
+    )
+  }
+
+  print(paste(
+    "[INFO] Make bins for ", alleles_str, sep = ""
+  ))
+  a1_bin_dt <- make_bins(
+    start_pos = mm$a1_aln_start,
+    end_pos = mm$a1_aln_end,
+    allele_length = length(a1_seq),
+    bin_size = 150
+  )
+  a2_bin_dt <- make_bins(
+    start_pos = mm$a2_aln_start,
+    end_pos = mm$a2_aln_end,
+    allele_length = length(a2_seq),
+    bin_size = 150
+  )
+
+  # let me not worry about the unique table for now
+  print(paste(
+    "[INFO] Bin coverage data table for ", alleles_str, sep = ""
+  ))
+  a1_cov_dt <- collate_tumor_and_normal_cov_per_allele(
+    t_allele_cov_dt = t_hla_cov[[a1]],
+    n_allele_cov_dt = n_hla_cov[[a1]],
+    allele = a1,
+    mulfactor = mulfactor
+  )
+  a1_cov_dt <- binning(
+    allele_cov_dt = a1_cov_dt,
+    bin_dt = a1_bin_dt,
+    allele = a1
+  )
+  names(a1_cov_dt) <- paste(
+    "a1_", names(a1_cov_dt),
+    sep = ""
+  )
+  a2_cov_dt <- collate_tumor_and_normal_cov_per_allele(
+    t_allele_cov_dt = t_hla_cov[[a2]],
+    n_allele_cov_dt = n_hla_cov[[a2]],
+    allele = a2,
+    mulfactor = mulfactor
+  )
+  a2_cov_dt <- binning(
+    allele_cov_dt = a2_cov_dt,
+    bin_dt = a2_bin_dt,
+    allele = a2
+  )
+  names(a2_cov_dt) <- paste(
+    "a2_", names(a2_cov_dt),
+    sep = ""
+  )
+
+  print(paste(
+    "[INFO] Get binned tumor and normal dp for ", alleles_str, sep = ""
+  ))
+  a1_cov_dt[, a1_bin_t_dp := as.numeric(median(a1_t_dp, na.rm=TRUE)), by = "a1_bin"]
+  a1_cov_dt[, a1_bin_n_dp := as.numeric(median(a1_n_dp, na.rm=TRUE)), by = "a1_bin"]
+  a2_cov_dt[, a2_bin_t_dp := as.numeric(median(a2_t_dp, na.rm=TRUE)), by = "a2_bin"]
+  a2_cov_dt[, a2_bin_n_dp := as.numeric(median(a2_n_dp, na.rm=TRUE)), by = "a2_bin"]
+
+  print("[INFO] Get local logR corrector ")
+  a1_cov_dt[, bin_multfactor := a1_bin_n_dp / a1_bin_t_dp]
+  a2_cov_dt[, bin_multfactor := a2_bin_n_dp / a2_bin_t_dp]
+  local_multfactor <- min(
+    median(unique(a1_cov_dt, by="a1_bin")$bin_multfactor, na.rm=TRUE),
+    median(unique(a2_cov_dt, by="a2_bin")$bin_multfactor, na.rm=TRUE)
+  )
+  if (local_multfactor > 1) {
+    local_multfactor <- 1
+  } else {
+    if (multfactor > local_multfactor) {
+      local_multfactor <- mulfactor
+    }
+  }
+  a1_cov_dt[, bin_multfactor := NULL]
+  a2_cov_dt[, bin_multfactor := NULL]
+
+  a1_cov_dt[, a1_logR := log2(a1_t_dp / a1_n_dp * local_multfactor)]
+  a1_cov_dt[, a1_bin_logR := median(a1_logR, na.rm = TRUE), by=a1_bin]
+  a2_cov_dt[, a2_logR := log2(a2_t_dp / a2_n_dp * local_multfactor)]
+  a2_cov_dt[, a2_bin_logR := median(a2_logR, na.rm = TRUE), by=a2_bin]
+
+  print(paste(
+    "[INFO] Get median logR for ", alleles_str, sep = ""
+  ))
+  a1_median_logr <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
+  a2_median_logr <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
+  a1_mm_cov_dt <- a1_cov_dt[a1_start %in% mm$diffSeq1]
+  a2_mm_cov_dt <- a2_cov_dt[a2_start %in% mm$diffSeq2]
+  a1_mm_median_logr <- median(a1_mm_cov_dt$a1_logR, na.rm = TRUE)
+  a2_mm_median_logr <- median(a2_mm_cov_dt$a2_logR, na.rm = TRUE)
+  a1_keep_cols <- c(
+    "a1_seqnames", "a1_bin", "a1_bin_t_dp", "a1_bin_n_dp", "a1_bin_logR"
+  )
+  a2_keep_cols <- c(
+    "a2_seqnames", "a2_bin", "a2_bin_t_dp", "a2_bin_n_dp", "a2_bin_logR"
+  )
+  bin_logR_dt <- merge(
+    unique(a1_cov_dt, by="a1_bin")[, ..a1_keep_cols],
+    unique(a2_cov_dt, by="a2_bin")[, ..a2_keep_cols],
+    by.x = c("a1_bin"), by.y = c("a2_bin"),
+    all.x = TRUE, all.y = TRUE
+  )
+  bin_logR_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
+  bin_logR_dt[, logR_combined_bin := log2((a1_bin_t_dp + a2_bin_t_dp) / (a1_bin_n_dp + a2_bin_n_dp) * local_multfactor)]
+  bin_logR_dt[, cn_loss_test_bin := apply(
+    .SD, 1, test_cn_loss_using_log_odds_ratio
+    ),
+    .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
+  ]
+  bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+
+  print("[INFO] Estimate copy number at mismatch sites")
+  mm_est_dt <- data.table(a1_start = mm$diffSeq1, a2_start = mm$diffSeq2)
+
+  mm_est_dt <- mm_est_dt[
+    a1_start %in% a1_cov_dt$a1_start & a2_start %in% a2_cov_dt$a2_start
+  ]
+  if (nrow(mm_est_dt) == 0) {
+    print("[INFO] No coverage info found for both alleles at mm sites")
+    print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
+    return(
+      data.table(
+        "HLA_A1" = a1, "HLA_A2" = a2,
+        "HLA_A1_CN" = NA,
+        "HLA_A1_CN_Lower" = NA,
+        "HLA_A1_CN_Upper" = NA,
+        "HLA_A2_CN" = NA,
+        "HLA_A2_CN_Lower" = NA,
+        "HLA_A2_CN_Upper" = NA,
+        "HLA_A1_Median_LogR" = a1_median_logr,
+        "HLA_A2_Median_LogR" = a2_median_logr,
+        "HLA_A1_MM_Median_LogR" = a1_mm_median_logr,
+        "HLA_A2_MM_Median_logR" = a2_mm_median_logr,
+        "Median_BAF" = NA,
+        "HLA_MM_Once_LogR_Paired_Pvalue" = NA,
+        "HLA_MM_Once_LogR_Unpaired_Pvalue" = NA,
+        "Num_MM" = length(mm$diffSeq1),
+        "Num_Bins" = nrow(
+          bin_logR_dt[bin > 0 & bin < min(length(a1_seq), length(a2_seq))]
+        ),
+        "Num_CN_Loss_Supporting_Bins" = NA
+      )
+    )
+  }
+  a1_keep_cols <- c(
+    "a1_seqnames", "a1_bin", "a1_start", "a1_ref", "a1_t_dp", "a1_n_dp", "a1_logR"
+  )
+  a2_keep_cols <- c(
+    "a2_seqnames", "a2_bin", "a2_start", "a2_ref", "a2_t_dp", "a2_n_dp", "a2_logR"
+  )
+  mm_est_dt <- merge(mm_est_dt, a1_cov_dt[, ..a1_keep_cols], by="a1_start", all.x=TRUE)
+  mm_est_dt <- merge(mm_est_dt, a2_cov_dt[, ..a2_keep_cols], by="a2_start", all.x=TRUE)
+  mm_est_dt[, ":="(bin = a1_bin, a1_bin = NULL, a2_bin = NULL)]
+  keep_cols <- c(
+    "bin", "a1_bin_t_dp", "a1_bin_n_dp", "a1_bin_logR",
+    "a2_bin_t_dp", "a2_bin_n_dp", "a2_bin_logR",
+    "logR_combined_bin", "capture_bias_bin"
+  )
+  mm_est_dt <- merge(mm_est_dt, bin_logR_dt[, ..keep_cols], by = "bin", all.x=TRUE)
+
+  mm_est_dt[, baf := a1_t_dp / (a1_t_dp + a2_t_dp)] # nolint
+  mm_est_dt[, baf_combined := baf / capture_bias_bin]
+  mm_est_dt[, "nA_combined_bin" :=
+    (purity - 1 + baf_combined * 2^(logR_combined_bin / gamma) * # nolint
+      ((1 - purity) * 2 + purity * ploidy)) / purity,
+  ]
+  mm_est_dt[, "nB_combined_bin" :=
+    (purity - 1 - (baf_combined - 1) * 2^(logR_combined_bin / gamma) * # nolint
+      ((1 - purity) * 2 + purity * ploidy)) / purity,
+  ]
+  mm_est_dt[, ":="(
+    median_nA_combined_bin = median(nA_combined_bin, na.rm = TRUE),
+    median_nB_combined_bin = median(nB_combined_bin, na.rm = TRUE)
+  ),
+  by = "bin"
+  ]
+
+  mm_est_bin_dt <- unique(mm_est_dt, by = "bin")
+  na_cn_est <- nb_cn_est <- NA
+  na_cn_est <- median(mm_est_bin_dt$median_nA_combined_bin, na.rm = TRUE)
+  nb_cn_est <- median(mm_est_bin_dt$median_nB_combined_bin, na.rm = TRUE)
+
+  na_cn_pvalue <- nb_cn_pvalue <- 99999.0 
+  na_cn_test <- t_test_with_na(
+   mm_est_bin_dt$median_nA_combined_bin
+  )
+  na_cn_est_conf <- na_cn_test$conf.int
+  na_cn_est_lower <- na_cn_est_conf[1]
+  na_cn_est_upper <- na_cn_est_conf[2]
+  nb_cn_test <- t_test_with_na(
+    mm_est_bin_dt$median_nB_combined_bin
+  )
+  nb_cn_est_conf <- nb_cn_test$conf.int
+  nb_cn_est_lower <- nb_cn_est_conf[1]
+  nb_cn_est_upper <- nb_cn_est_conf[2]
+
+  a1_t_mm_once_dt <- get_once_count_at_mm(
+    hla_cov_dt = t_hla_cov[[a1]],
+    allele = a1,
+    mm_pos = mm$diffSeq1
+  )
+  a1_n_mm_once_dt <- get_once_count_at_mm(
+    hla_cov_dt = n_hla_cov[[a1]],
+    allele = a1,
+    mm_pos = mm$diffSeq1
+  )
+  a2_t_mm_once_dt <- get_once_count_at_mm(
+    hla_cov_dt = t_hla_cov[[a2]],
+    allele = a2,
+    mm_pos = mm$diffSeq2
+  )
+  a2_n_mm_once_dt <- get_once_count_at_mm(
+    hla_cov_dt = n_hla_cov[[a2]],
+    allele = a2,
+    mm_pos = mm$diffSeq2
+  )
+  a1_mm_once_dt <- collate_tumor_and_normal_cov_per_allele(
+    t_allele_cov_dt = a1_t_mm_once_dt,
+    n_allele_cov_dt = a1_n_mm_once_dt,
+    allele = a1,
+    mulfactor = mulfactor
+  )
+  names(a1_mm_once_dt) <- paste(
+    "a1_", names(a1_mm_once_dt),
+    sep = ""
+  )
+
+  a2_mm_once_dt <- collate_tumor_and_normal_cov_per_allele(
+    t_allele_cov_dt = a2_t_mm_once_dt,
+    n_allele_cov_dt = a2_n_mm_once_dt,
+    allele = a2,
+    mulfactor = mulfactor
+  )
+  names(a2_mm_once_dt) <- paste(
+    "a2_", names(a2_mm_once_dt),
+    sep = ""
+  )
+
+  a1_mm_once_dt[, a1_logR := log2(a1_t_dp / a1_n_dp * local_multfactor)]
+  a2_mm_once_dt[, a2_logR := log2(a2_t_dp / a2_n_dp * local_multfactor)]
+
+  mm_once_est_dt <- data.table(a1_start = mm$diffSeq1, a2_start = mm$diffSeq2)
+  mm_once_est_dt <- mm_once_est_dt[
+    a1_start %in% a1_cov_dt$a1_start & a2_start %in% a2_cov_dt$a2_start
+  ]
+  mm_once_est_dt <- merge(mm_once_est_dt, a1_mm_once_dt, by="a1_start", all.x=TRUE)
+  mm_once_est_dt <- merge(mm_once_est_dt, a2_mm_once_dt, by="a2_start", all.x=TRUE)
+
+  n_a1_mm_sites_to_test <- nrow(mm_once_est_dt[!is.na(a1_logR)])
+  n_a2_mm_sites_to_test <- nrow(mm_once_est_dt[!is.na(a2_logR)])
+  paired_test_pval <- unpaired_test_pval <- NA
+  if(n_a1_mm_sites_to_test > 1 && n_a2_mm_sites_to_test > 1) {
+    paired_t_test <- t.test(
+      mm_once_est_dt$a1_logR,
+      mm_once_est_dt$a2_logR,
+      paired = TRUE
+    )
+    unpaired_t_test <- t.test(
+      mm_once_est_dt$a1_logR,
+      mm_once_est_dt$a2_logR,
+      paired = FALSE
+    )
+    paired_test_pval <- paired_t_test$p.value
+    unpaired_test_pval <- unpaired_t_test$p.value
+  }
+
+  hla_gene <- basename(outdir)
+  out_rds <- file.path(outdir, paste(hla_gene, ".data.rds", sep=""))
+  print(paste("[INFO] Dump intermediate data to file: ", out_rds, sep=""))
+  data_to_save <- list(
+    mm = mm,
+    a1_bin_dt = a1_bin_dt,
+    a2_bin_dt = a2_bin_dt,
+    a1_cov_dt = a1_cov_dt,
+    a2_cov_dt = a2_cov_dt,
+    bin_logR_dt = bin_logR_dt,
+    mm_est_dt = mm_est_dt
+  )
+  saveRDS(data_to_save, out_rds)
+
+  plot_dir <- file.path(dirname(outdir), "plots")
+  parse_dir_path(dir = plot_dir, create = TRUE)
+  names(a1_cov_dt) <- gsub("a1_", "", names(a1_cov_dt))
+  names(a2_cov_dt) <- gsub("a2_", "", names(a2_cov_dt))
+  a1_cov_dt <- normalize_hla_seqname(dt = a1_cov_dt) 
+  a2_cov_dt <- normalize_hla_seqname(dt = a2_cov_dt) 
+  a1_cov_dt[, dp := t_dp]
+  a2_cov_dt[, dp := t_dp]
+  out_plot <- file.path(plot_dir, paste(hla_gene, ".tumor.cov.pdf", sep=""))
+  plot_cov(
+    dt = rbind(a1_cov_dt, a2_cov_dt),
+    out_file = out_plot,
+    ylab = "Tumor Depth" 
+  )
+  a1_cov_dt[, dp := n_dp]
+  a2_cov_dt[, dp := n_dp]
+  out_plot <- file.path(plot_dir, paste(hla_gene, ".normal.cov.pdf", sep=""))
+  plot_cov(
+    dt = rbind(a1_cov_dt, a2_cov_dt),
+    out_file = out_plot,
+    ylab = "Normal Depth" 
+  )
+  out_plot <- file.path(plot_dir, paste(hla_gene, ".logR.pdf", sep=""))
+  plot_logr(
+    dt = merge(
+      rbind(a1_cov_dt, a2_cov_dt),
+      bin_logR_dt[, c("bin", "logR_combined_bin")],
+      by = "bin",
+      all.x = TRUE
+    ),
+    out_file = out_plot 
+  )
+  mm_est_dt[, ":="(
+    a1_seqnames=unique(a1_cov_dt$seqnames),
+    a2_seqnames=unique(a2_cov_dt$seqnames)
+  )]
+  out_plot <- file.path(plot_dir, paste(hla_gene, ".baf.pdf", sep=""))
+  plot_baf(
+    dt = mm_est_dt,
+    out_file = out_plot 
+  )
+
+  data.table(
+    "HLA_A1" = a1, "HLA_A2" = a2,
+    "HLA_A1_CN" = na_cn_est,
+    "HLA_A1_CN_Lower" = round(na_cn_est_lower, digits = 4),
+    "HLA_A1_CN_Upper" = round(na_cn_est_upper, digits = 4),
+    "HLA_A2_CN" = nb_cn_est,
+    "HLA_A2_CN_Lower" = round(nb_cn_est_lower, digits = 4),
+    "HLA_A2_CN_Upper" = round(nb_cn_est_upper, digits = 4),
+    "HLA_A1_Median_LogR" = a1_median_logr,
+    "HLA_A2_Median_LogR" = a2_median_logr,
+    "HLA_A1_MM_Median_LogR" = a1_mm_median_logr,
+    "HLA_A2_MM_Median_logR" = a2_mm_median_logr,
+    "Median_BAF" = median(mm_est_dt$baf_combined, na.rm = TRUE),
+    "HLA_MM_Once_LogR_Paired_Pvalue" = paired_test_pval,
+    "HLA_MM_Once_LogR_Unpaired_Pvalue" = unpaired_test_pval,
+    "Num_MM" = length(mm$diffSeq1),
+    "Num_Bins" = nrow(
+      bin_logR_dt[bin > 0 & bin < min(length(a1_seq), length(a2_seq))]
+    ),
+    "Num_CN_Loss_Supporting_Bins" = nrow(
+      bin_logR_dt[cn_loss_test_bin <= 0.01]
+    )
+  )
+}
+
+gamma <- 1
+bin_size <- 150
+
+args <- parse_cmd()
+
+parse_file_path(file = args$tbam)
+parse_file_path(file = args$nbam)
+#parse_file_path(file = args$R1)
+#parse_file_path(file = args$R2)
+#parse_file_path(file = args$r1)
+#parse_file_path(file = args$r2)
+parse_dir_path(dir = args$outdir, create = TRUE)
+
+tid <- NULL
+nid <- NULL
+if (args$example) {
+  # when using the test data provided by LOHHLA.R set these two lines below
+  tid <- "example_tumor"
+  nid <- "example_normal"
+} else {
+  t_rg <- get_read_group_from_bam(bam = args$tbam)
+  tid <- get_sm_from_rg(rg = t_rg)
+  n_rg <- get_read_group_from_bam(bam = args$nbam)
+  nid <- get_sm_from_rg(rg = n_rg)
+}
+
+#tid <- args$tid
+#nid <- args$nid
+if (args$example) {
+  # when using the test data provided by LOHHLA.R set these two lines below
+  tid <- "example_tumor"
+  nid <- "example_normal"
+}
+
+print("[INFO] Getting estimates of ploidy and purity")
+tstates_dt <- fread(args$tstates, drop = c(1))
+#if (!all(c("ploidy", "purity") %in% names(tstates_dt))) {
+if (!all(c("TumorPloidy", "TumorPurityNGS") %in% names(tstates_dt))) {
+  print(paste(
+    "[ERROR] Miss either purity, or ploidy, or both ",
+    "in the CNV model results",
+    sep = ""
+  ))
+  quit(status = 1)
+}
+ploidy <- tstates_dt[["TumorPloidy"]]
+purity <- tstates_dt[["TumorPurityNGS"]]
+print("[INFO] Getting estimates of ploidy and purity [DONE]")
+print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
+if (is.na(ploidy) || is.na(purity)) {
+  print("[INFO] Ploidy and purity estimate are missing from CNV result")
+  print("[INFO] Terminate due to missing value to estimate HLA copy number")
+  quit(status = 0)
+}
+
+print("[INFO] Loading HLA allele reference sequences")
+hla_ref_fasta <- read.fasta(args$hlaref)
+print("[INFO] Loading HLA allele reference sequences [DONE]")
+
+hla_alleles_to_analyze <- get_hla_alleles(
+  hla_res = args$hlares, hla_ref_fasta = hla_ref_fasta
+)
+
+print("[INFO] Getting subject-specific HLA allele FASTA sequences")
+subj_hla_ref_seq <- hla_ref_fasta[unname(unlist(hla_alleles_to_analyze))]
+
+realign_outdir <- file.path(
+  args$outdir, paste(args$subject, "hla_realn", sep = "_")
+)
+parse_dir_path(realign_outdir, create = TRUE)
+subj_hla_ref_fasta <- file.path(
+  realign_outdir, paste(args$subject, ".subject.hla.fasta", sep = "")
+)
+if (!file.exists(subj_hla_ref_fasta)) {
+  print("[INFO] Dumping subject HLA sequences to Fasta file")
+  write.fasta(
+    subj_hla_ref_seq,
+    file = subj_hla_ref_fasta,
+    names = names(subj_hla_ref_seq)
+  )
+  print("[INFO] Dumping subject HLA sequence to Fasta file [DONE]")
+} else {
+  print("[INFO] Found subject HLA sequence Fasta file")
+}
+print("[INFO] Getting subject-specific HLA allele FASTA sequences [DONE]")
+
+subj_hla_ref_index <- index_hla_fasta(
+  subject = args$subject,
+  fasta = subj_hla_ref_fasta,
+  indexer = args$indexer,
+  outdir = realign_outdir,
+  threads = args$threads
+)
+
+# old polysovler realignment
+# FIXME: remove later
+hla_kmer_tag <- args$hlatag
+if (is.null(args$hlatag)) {
+  print("[INFO] Building kmer tags for realignment")
+  hla_kmer_tag <- build_kmer_tags(
+    hla_ref_fasta = args$hlaref,
+    kmer = args$kmer,
+    outdir = realign_outdir,
+    threads = args$threads
+  )
+  print("[INFO] Building kmer tags for realignment [DONE]")
+}
+
+# FIXME: old realignment, remove later
+t_realign_outdir <- file.path(realign_outdir, tid)
+parse_dir_path(t_realign_outdir, create = TRUE)
+realign_tbam <- realign_hla(
+  sid = tid,
+  bam = args$tbam,
+  genome = args$genome,
+  hla_index = subj_hla_ref_index,
+  tags = hla_kmer_tag,
+  bed = args$hlabed,
+  outdir = t_realign_outdir,
+  threads = args$threads
+)
+
+#t_realign_outdir <- file.path(realign_outdir, tid)
+#parse_dir_path(t_realign_outdir, create = TRUE)
+#realign_tbam <- realign_hla_new(
+#  sid = tid,
+#  r1 = args$R1,
+#  r2 = args$R2,
+#  hla_ref = subj_hla_ref_fasta,
+#  outdir = t_realign_outdir,
+#  nproc = args$threads
+#)
+#
+#n_realign_outdir <- file.path(realign_outdir, nid)
+#parse_dir_path(n_realign_outdir, create = TRUE)
+#realign_nbam <- realign_hla_new(
+#  sid = nid,
+#  r1 = args$r1,
+#  r2 = args$r2,
+#  hla_ref = subj_hla_ref_fasta,
+#  outdir = n_realign_outdir,
+#  nproc = args$threads
+#)
+
+# FIXME: old realignment, remove later
+realign_nbam <- NULL
+if (!is.null(args$realn_nbam) && file.exists(args$realn_nbam)) {
+  print("[INFO] Provided with HLA-realigned normal BAM file")
+  print("[INFO] Checking the ref sequence header")
+  seqinfo_realn_nbam <- get_seqinfo_from_bam_header(bam = args$realn_nbam)
+  if (all(grepl("^hla", names(seqinfo_realn_nbam)))) {
+    realign_nbam <- args$realn_nbam
+    print("[INFO] Checking the ref sequence header [DONE]")
+    print("[INFO] Checking if the HLA-aligned BAM has an index")
+    if (file.exists(paste(realign_nbam, ".bai", sep = ""))) {
+      print("[INFO] Checking if the HLA-aligned BAM has an index [DONE]")
+    } else {
+      print("[ERROR] Found no index for the HLA-aligned BAM")
+      quit(status = 1)
+    }
+  } else {
+    print(paste(
+      "[ERROR] Found no hla reference in the header",
+      " in the provided HLA-realigned BAM",
+      sep = ""
+    ))
+    quit(status = 1)
+  }
+} else {
+  n_realign_outdir <- file.path(realign_outdir, nid)
+  parse_dir_path(n_realign_outdir, create = TRUE)
+  realign_nbam <- realign_hla(
+    sid = nid,
+    bam = args$nbam,
+    genome = args$genome,
+    hla_index = subj_hla_ref_index,
+    tags = hla_kmer_tag,
+    bed = args$hlabed,
+    outdir = n_realign_outdir,
+    threads = args$threads
+  )
+}
+stop()
+
+print("[INFO] Counting sequencing depth from realigned normal BAM")
+n_seq_depth <- count_n_reads_from_bam(bam = realign_nbam, tagfilter = list(NM=c(0)))
+print("[INFO] Counting sequencing depth from realigned tumor BAM")
+t_seq_depth <- count_n_reads_from_bam(bam = realign_tbam, tagfilter = list(NM=c(0)))
+if (t_seq_depth <= 0) {
+  print("[ERROR] Found no alignments in the provided tumor BAM")
+  quit(status = 1)
+}
+multfactor <- n_seq_depth / t_seq_depth
+print(paste("[INFO] Normal sequencing depth = ", n_seq_depth, sep=""))
+print(paste("[INFO] Tumor sequencing depth = ", t_seq_depth, sep=""))
+print(paste("[INFO] Sequencing depth correcting factor = ", multfactor, sep=""))
+
+hlaloh_res_list <- list()
+for (i in seq_len(length(hla_alleles_to_analyze))) {
+  hla_gene <- tolower(names(hla_alleles_to_analyze)[i])
+
+  hla_alleles <- hla_alleles_to_analyze[[i]]
+
+  outdir <- file.path(args$outdir, paste(hla_gene, "/", sep = ""))
+  parse_dir_path(dir = outdir, create = TRUE)
+  res_dt <- call_hla_loh(
+    alleles = hla_alleles, tbam = realign_tbam, nbam = realign_nbam,
+    subj_hla_ref_fasta = subj_hla_ref_fasta, outdir = outdir,
+    purity = purity, ploidy = ploidy, mulfactor = multfactor,
+    min_dp = args$min_cov, min_necnt = args$min_nm,
+    tid = tid, nid = nid, gamma = gamma
+  )
+  hlaloh_res_list <- append(hlaloh_res_list, list(res_dt))
+}
+
+hlaloh_res_dt <- rbindlist(hlaloh_res_list)
+print(hlaloh_res_dt)
+
+out_res <- file.path(args$outdir, paste(args$subject, ".hlaloh.res.tsv", sep=""))
+fwrite(hlaloh_res_dt, out_res, sep="\t", row.names=FALSE, quote=FALSE)
