@@ -12,24 +12,6 @@ suppressPackageStartupMessages({
 
 options(width = 600)
 
-plot_theme <- theme(
-  axis.text.x = element_text(size = 14, color = "black"),
-  axis.text.y = element_text(size = 14, color = "black"),
-  axis.title.x = element_text(size = 16, color = "black"),
-  axis.title.y = element_text(size = 16, color = "black"),
-  panel.grid.major = element_blank(),
-  panel.grid.minor = element_blank(),
-  panel.background = element_blank(),
-  axis.line = element_line(colour = "black"),
-  legend.position = c(0.98, 0.98),
-  legend.justification = c("right", "top"),
-  legend.key = element_blank(),
-  legend.text = element_text(size=12)
-)
-grp4_colors <- c("#0072B5FF", "#E18727FF", "#925E9FFF", "#AD002AFF")
-a1_color <- grp4_colors[1]
-a2_color <- grp4_colors[2]
-
 parse_cmd <- function() {
   parser <- ArgumentParser()
   parser$add_argument("--subject",
@@ -132,134 +114,6 @@ check_missing_cols_before_plot <- function(cols, to_check) {
   }
 
 }
-plot_cov <- function(
-  dt, out_file,
-  colors=c("#0072B5FF", "#E18727FF"),
-  xlab="HLA Positions", ylab="Depth", width=12, height=5
-) {
-
-  print("[INFO] Plot coverage across positions")
-  check_missing_cols_before_plot(
-    cols = names(dt),
-    to_check = c("seqnames", "dp", "start")
-  )
-  alleles <- unique(dt$seqnames)
-  if (length(alleles) != 2) {
-    print(paste(
-      "[ERROR] Coverage plot expects exact 2 alleles. ",
-      length(alleles),
-      " given: ",
-      alleles,
-      sep=""
-    ))
-    quit(status = 1)
-  }
-  a1 <- alleles[1]
-  a2 <- alleles[2]
-  a1_color <- colors[1]
-  a2_color <- colors[2]
-  max_x <- max(dt$start)
-  m <- ggplot(dt, aes(x=start, y=dp)) +
-    geom_point(aes(color=seqnames), stroke = NA) +
-    scale_color_manual(
-      name="",
-      values = c(a1_color, a2_color),
-      limits = c(a1, a2)
-    ) +
-    scale_x_continuous(expand=c(0, 0), limits = c(0, max_x+200)) +
-    labs(x = xlab, y = ylab) +
-    plot_theme
-  ggsave(out_file, m, width=width, height=height)
-  print(paste("[INFO] Save plot to file: ", out_file, sep=""))
-
-}
-
-plot_logr <- function(
-  dt, out_file,
-  colors=c("#0072B5FF", "#E18727FF"),
-  xlab="HLA Positions", ylab="logR", width=12, height=5
-) {
-
-  print("[INFO] Plot logR across positions")
-  check_missing_cols_before_plot(
-    cols = names(dt),
-    to_check = c("seqnames", "logR", "start", "logR_combined_bin")
-  )
-  alleles <- unique(dt$seqnames)
-  if (length(alleles) != 2) {
-    print(paste(
-      "[ERROR] Coverage plot expects exact 2 alleles. ",
-      length(alleles),
-      " given: ",
-      alleles,
-      sep=""
-    ))
-    quit(status = 1)
-  }
-  a1 <- alleles[1]
-  a2 <- alleles[2]
-  a1_median_logr <- median(dt[seqnames==a1]$logR, na.rm = TRUE)
-  a2_median_logr <- median(dt[seqnames==a2]$logR, na.rm = TRUE)
-  a1_color <- colors[1]
-  a2_color <- colors[2]
-  max_x <- max(dt$start)
-  max_y <- max(dt$logR)
-  min_y <- min(dt$logR)
-  m <- ggplot(dt, aes(x=start, y=logR)) +
-    geom_point(aes(color=seqnames), stroke = NA) +
-    geom_line(data=dt, aes(x=start, y=logR_combined_bin), color="#1B1919FF") +
-    geom_hline(aes(yintercept=a1_median_logr), color=a1_color, linetype="dashed") +
-    geom_hline(aes(yintercept=a2_median_logr), color=a2_color, linetype="dashed") +
-    scale_color_manual(
-      name="",
-      values = c(a1_color, a2_color),
-      limits = c(a1, a2)
-    ) +
-    scale_x_continuous(expand=c(0, 0), limits = c(0, max_x+200)) +
-    scale_y_continuous(expand=c(0, 0), limits = c(min_y-0.3, max_y+0.5)) +
-    labs(x = xlab, y = ylab) +
-    plot_theme
-  ggsave(out_file, m, width=width, height=height)
-  print(paste("[INFO] Save plot to file: ", out_file, sep=""))
-
-}
-
-plot_baf <- function(
-  dt, out_file,
-  colors=c("#0072B5FF", "#E18727FF"),
-  xlab="HLA Positions", ylab="B-allele frequency", width=12, height=5
-) {
-
-  print("[INFO] Plot BAF across mismatch positions")
-  check_missing_cols_before_plot(
-    cols = names(dt),
-    to_check = c(
-      "a1_seqnames", "a2_seqnames", "a1_n_dp", "a2_n_dp",
-      "a1_start", "baf", "baf_combined"
-    )
-  )
-  a1 <- unique(dt$a1_seqnames)
-  a2 <- unique(dt$a2_seqnames)
-  dt[, baf_n := a1_n_dp / (a1_n_dp+a2_n_dp)]
-  max_x <- max(dt$a1_start)
-  m <- ggplot() +
-    geom_point(data=dt, aes(x=a1_start, y=baf, color = a1_seqnames), stroke = NA) +
-    geom_point(data=dt, aes(x=a1_start, y=baf_combined), color=a1_color, shape=3) +
-    geom_point(data=dt, aes(x=a1_start, y=baf_n), color="grey", stroke = NA, alpha = 0.8) +
-    geom_hline(aes(yintercept=0.5), color="grey", linetype="dashed") +
-    scale_color_manual(
-      name="",
-      values = c(a1_color),
-      limits = c(a1)
-    ) +
-    scale_x_continuous(expand=c(0, 0), limits = c(0, max_x+200)) +
-    scale_y_continuous(expand=c(0, 0), limits = c(0, 1.05)) +
-    labs(x = "Position", y = "B-allele Frequency") +
-    plot_theme
-  ggsave(out_file, m, width=width, height=height)
-  print(paste("[INFO] Save plot to file: ", out_file, sep=""))
-
-}
 
 parse_file_path <- function(file) {
   if (!file.exists(file)) {
@@ -307,6 +161,7 @@ get_sm_from_rg <- function(rg) {
   sm
 }
 
+# FIXME: this can go away once I clear out mpileup
 run_cmd <- function(cmd, args, stdout, stderr) {
   if (is.logical(stdout)) {
     print("[ERROR] run_cmd function does not capture stdout to a variable")
