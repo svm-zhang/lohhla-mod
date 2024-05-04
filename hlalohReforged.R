@@ -4,7 +4,6 @@ suppressPackageStartupMessages({
   library(argparse)
   library(data.table)
   library(ggplot2)
-  library(moments)
   library(splitstackshape)
   library(seqinr)
   library(Biostrings)
@@ -33,34 +32,10 @@ a2_color <- grp4_colors[2]
 
 parse_cmd <- function() {
   parser <- ArgumentParser()
-  #parser$add_argument("--R1",
-  #  metavar = "FILE", type = "character", required = TRUE,
-  #  help = "Specify the tumor R1 Fastq file"
-  #)
-  #parser$add_argument("--R2",
-  #  metavar = "FILE", type = "character", required = TRUE,
-  #  help = "Specify the tumor R2 Fastq file"
-  #)
-  #parser$add_argument("--r1",
-  #  metavar = "FILE", type = "character", required = TRUE,
-  #  help = "Specify the normal R1 Fastq file"
-  #)
-  #parser$add_argument("--r2",
-  #  metavar = "FILE", type = "character", required = TRUE,
-  #  help = "Specify the normal R2 Fastq file"
-  #)
   parser$add_argument("--subject",
     metavar = "STR", type = "character", required = TRUE,
     help = "Specify the subject ID"
   )
-  #parser$add_argument("--tid",
-  #  metavar = "STR", type = "character", required = TRUE,
-  #  help = "Specify the tumor sample ID"
-  #)
-  #parser$add_argument("--nid",
-  #  metavar = "STR", type = "character", required = TRUE,
-  #  help = "Specify the normal sample ID"
-  #)
   parser$add_argument("--tbam",
     metavar = "FILE", type = "character", required = TRUE,
     help = "Specify the tumor bam file"
@@ -68,22 +43,6 @@ parse_cmd <- function() {
   parser$add_argument("--nbam",
     metavar = "FILE", type = "character", required = TRUE,
     help = "Specify the normal bam file"
-  )
-  #parser$add_argument("--realn_nbam",
-  #  metavar = "FILE", type = "character",
-  #  help = "Specify the HLA-reaigned normal bam file"
-  #)
-  parser$add_argument("--genome",
-    metavar = "FILE", type = "character", required = TRUE,
-    help = "Specify the human genome"
-  )
-  parser$add_argument("--hlabed",
-    metavar = "FILE", type = "character", required = TRUE,
-    help = "Specify HLA region in BED"
-  )
-  parser$add_argument("--hlatag",
-    metavar = "FILE", type = "character",
-    help = "Specify HLA kmer tags"
   )
   parser$add_argument("--hlares",
     metavar = "FILE", type = "character", required = TRUE,
@@ -97,23 +56,9 @@ parse_cmd <- function() {
     metavar = "DIR", type = "character", required = TRUE,
     help = "Specify the output directory"
   )
-  # this is the old --HLAfastaLoc option
-  parser$add_argument("--indexer",
-    metavar = "FILE", type = "character",
-    default = "novoindex", choices = c("novoindex"),
-    help = "Specify the HLA reference sequence in Fasta"
-  )
-  parser$add_argument("--hlaref",
-    metavar = "FILE", type = "character", required = TRUE,
-    help = "Specify the HLA reference sequence in Fasta"
-  )
   parser$add_argument("--min_cov",
     metavar = "INT", type = "integer", default = 30,
     help = "Specify the minimum coverage at mismatch sites (30)"
-  )
-  parser$add_argument("--kmer",
-    metavar = "INT", type = "integer", default = 38,
-    help = "Specify the kmer size to fish reads (38)"
   )
   parser$add_argument("--min_nm",
     metavar = "INT", type = "integer", default = 1,
@@ -130,7 +75,6 @@ parse_cmd <- function() {
     action = "store_true",
     help = "Specify to run on example data provided by LOHHLA"
   )
-  # parser$add_argument("--overwrite", action="store_true", help="Specify to overwrite the previous results regardless")
 
   parser$parse_args()
 }
@@ -395,37 +339,6 @@ run_cmd <- function(cmd, args, stdout, stderr) {
   }
 }
 
-build_kmer_tags <- function(hla_ref_fasta, kmer, outdir, threads = 8) {
-  print(paste("[INFO] Counting ", kmer, "-kmer from ", hla_ref_fasta, sep = ""))
-  mer_jf <- file.path(outdir, "kmer.counts.jf")
-  cmd <- "jellyfish"
-  args <- c(
-    "count", "-m", kmer, "-s", "100M",
-    "-t", threads, "-o", mer_jf, hla_ref_fasta
-  )
-  run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
-  print(paste("[INFO] Counting ", kmer, "-kmer from ",
-    hla_ref_fasta, "[DONE]",
-    sep = ""
-  ))
-
-  print(paste("[INFO] Dumping ", kmer, "-kmer to Fasta", sep = ""))
-  mer_jf_fa <- file.path(outdir, "kmer.counts.fa")
-  cmd <- "jellyfish"
-  args <- c("dump", "-o", mer_jf_fa, mer_jf)
-  run_cmd(cmd = cmd, args = args, stdout = "/dev/null", stderr = "/dev/null")
-  print(paste("[INFO] Dumping ", kmer, "-kmer to Fasta [DONE]", sep = ""))
-
-  print("[INFO] Extracting kmer tags from Fasta")
-  kmer_tag <- file.path(outdir, "kmer.tags")
-  cmd <- "grep"
-  args <- c("-v", "\"^>\"", mer_jf_fa)
-  run_cmd(cmd = cmd, args = args, stdout = kmer_tag, stderr = "/dev/null")
-  print("[INFO] Extracting kmer tags from Fasta [DONE]")
-
-  kmer_tag
-}
-
 count_n_reads_from_bam <- function(
   bam, count_dup = FALSE, only_proper = TRUE, only_primary = TRUE,
   tagfilter = list()
@@ -584,99 +497,6 @@ check_if_alleles_in_ref <- function(alleles, hla_ref_fasta) {
   alleles
 }
 
-index_hla_fasta <- function(subject, fasta, indexer, outdir, threads = 1) {
-  if (indexer == "novoindex") {
-    suffix <- ".nix"
-  }
-
-  hla_ref_index <- file.path(
-    outdir,
-    paste(subject,
-      ".subject.hla", suffix,
-      sep = ""
-    )
-  )
-
-  if (!file.exists(hla_ref_index)) {
-    print("[INFO] Generating index for the HLA Fasta sequences")
-    if (indexer == "novoindex") {
-      cmd <- "novoindex"
-      args <- c("-t", threads, hla_ref_index, fasta)
-    }
-    stdout <- file.path(outdir, paste(subject, indexer, "stdout", sep = "."))
-    stderr <- file.path(outdir, paste(subject, indexer, "stderr", sep = "."))
-    run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
-    print("[INFO] Generating index for the patient HLA sequence [DONE]")
-  } else {
-    print("[INFO] Found subject HLA sequence index")
-    print("[INFO] Skipping generating index")
-  }
-
-  hla_ref_index
-}
-
-realign_hla_new <- function(
-    sid, r1, r2, hla_ref, outdir, nproc = 1) {
-  realign_bam <- file.path(
-    outdir,
-    paste(sid, ".fished.realn.so.mdup.bam", sep = "")
-  )
-  if (!file.exists(realign_bam)) {
-    print(paste("[INFO] Realigning HLA for sample ", sid, sep = ""))
-    cmd <- "/home/simo/code/jshla/jspolysolver/optitype_hla_realign.sh"
-    args <- c(
-      "--r1", r1,
-      "--r2", r2,
-      "--hla_ref", hla_ref,
-      "--sample", sid,
-      "--outdir", outdir,
-      "--mdup",
-      "--nproc", nproc
-    )
-    stdout <- file.path(outdir, paste(sid, "hla.realn.stdout", sep = "."))
-    stderr <- file.path(outdir, paste(sid, "hla.realn.stderr", sep = "."))
-    run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
-    print(paste("[INFO] Realigning HLA for sample ", sid, " [DONE]", sep = ""))
-  } else {
-    print(paste("[INFO] Found realigned BAM for sample ", sid, sep = ""))
-    print("[INFO] Skipping realignment")
-  }
-
-  realign_bam
-}
-
-realign_hla <- function(
-    sid, bam, genome, hla_index,
-    tags, bed, outdir, threads = 1) {
-  realign_bam <- file.path(
-    outdir,
-    paste(sid, ".fished.realn.so.mdup.bam", sep = "")
-  )
-  if (!file.exists(realign_bam)) {
-    print(paste("[INFO] Realigning HLA for sample ", sid, sep = ""))
-    cmd <- "/home/simo/code/jshla/jspolysolver/polysolver_hla_realign.sh"
-    args <- c(
-      "--bam", bam,
-      "--tag", tags,
-      "--genome", genome,
-      "--nv_idx", hla_index,
-      "--bed", bed,
-      "--sample", sid,
-      "--outdir", outdir,
-      "--nproc", threads
-    )
-    stdout <- file.path(outdir, paste(sid, "hla.realn.stdout", sep = "."))
-    stderr <- file.path(outdir, paste(sid, "hla.realn.stderr", sep = "."))
-    run_cmd(cmd = cmd, args = args, stdout = stdout, stderr = stderr)
-    print(paste("[INFO] Realigning HLA for sample ", sid, " [DONE]", sep = ""))
-  } else {
-    print(paste("[INFO] Found realigned BAM for sample ", sid, sep = ""))
-    print("[INFO] Skipping realignment")
-  }
-
-  realign_bam
-}
-
 paste_vector <- function(v, sep = "") {
   vt <- v[1]
   if (length(v) > 1) {
@@ -808,6 +628,7 @@ get_indel_length <- function(cigar) {
   total
 }
 
+# FIXME: just use Rsamtools Pileup
 run_mpileup <- function(bam, hlafa, outdir) {
   # FIXME: samtools mpileup error message cannot be captured properly this way
   stderr <- file.path(outdir, "samtools.mpileup.stderr")
@@ -827,7 +648,6 @@ run_mpileup <- function(bam, hlafa, outdir) {
 }
 
 #' Function to calculate HLA allele coverage
-#'
 get_allele_coverage <- function(alleles, bam, hlafa, outdir, sid, min_necnt) {
   allele_coverage <- list()
   outdir <- file.path(outdir, paste(sid, "/", sep = ""))
@@ -1496,10 +1316,6 @@ args <- parse_cmd()
 
 parse_file_path(file = args$tbam)
 parse_file_path(file = args$nbam)
-#parse_file_path(file = args$R1)
-#parse_file_path(file = args$R2)
-#parse_file_path(file = args$r1)
-#parse_file_path(file = args$r2)
 parse_dir_path(dir = args$outdir, create = TRUE)
 
 tid <- NULL
@@ -1515,8 +1331,6 @@ if (args$example) {
   nid <- get_sm_from_rg(rg = n_rg)
 }
 
-#tid <- args$tid
-#nid <- args$nid
 if (args$example) {
   # when using the test data provided by LOHHLA.R set these two lines below
   tid <- "example_tumor"
@@ -1534,6 +1348,7 @@ if (!all(c("TumorPloidy", "TumorPurityNGS") %in% names(tstates_dt))) {
   ))
   quit(status = 1)
 }
+# FIXME: when no data provided, assuming ploidy=2, purity=?
 ploidy <- tstates_dt[["TumorPloidy"]]
 purity <- tstates_dt[["TumorPurityNGS"]]
 print("[INFO] Getting estimates of ploidy and purity [DONE]")
@@ -1551,127 +1366,6 @@ print("[INFO] Loading HLA allele reference sequences [DONE]")
 hla_alleles_to_analyze <- get_hla_alleles(
   hla_res = args$hlares, hla_ref_fasta = hla_ref_fasta
 )
-
-print("[INFO] Getting subject-specific HLA allele FASTA sequences")
-subj_hla_ref_seq <- hla_ref_fasta[unname(unlist(hla_alleles_to_analyze))]
-
-realign_outdir <- file.path(
-  args$outdir, paste(args$subject, "hla_realn", sep = "_")
-)
-parse_dir_path(realign_outdir, create = TRUE)
-subj_hla_ref_fasta <- file.path(
-  realign_outdir, paste(args$subject, ".subject.hla.fasta", sep = "")
-)
-if (!file.exists(subj_hla_ref_fasta)) {
-  print("[INFO] Dumping subject HLA sequences to Fasta file")
-  write.fasta(
-    subj_hla_ref_seq,
-    file = subj_hla_ref_fasta,
-    names = names(subj_hla_ref_seq)
-  )
-  print("[INFO] Dumping subject HLA sequence to Fasta file [DONE]")
-} else {
-  print("[INFO] Found subject HLA sequence Fasta file")
-}
-print("[INFO] Getting subject-specific HLA allele FASTA sequences [DONE]")
-
-subj_hla_ref_index <- index_hla_fasta(
-  subject = args$subject,
-  fasta = subj_hla_ref_fasta,
-  indexer = args$indexer,
-  outdir = realign_outdir,
-  threads = args$threads
-)
-
-# old polysovler realignment
-# FIXME: remove later
-hla_kmer_tag <- args$hlatag
-if (is.null(args$hlatag)) {
-  print("[INFO] Building kmer tags for realignment")
-  hla_kmer_tag <- build_kmer_tags(
-    hla_ref_fasta = args$hlaref,
-    kmer = args$kmer,
-    outdir = realign_outdir,
-    threads = args$threads
-  )
-  print("[INFO] Building kmer tags for realignment [DONE]")
-}
-
-# FIXME: old realignment, remove later
-t_realign_outdir <- file.path(realign_outdir, tid)
-parse_dir_path(t_realign_outdir, create = TRUE)
-realign_tbam <- realign_hla(
-  sid = tid,
-  bam = args$tbam,
-  genome = args$genome,
-  hla_index = subj_hla_ref_index,
-  tags = hla_kmer_tag,
-  bed = args$hlabed,
-  outdir = t_realign_outdir,
-  threads = args$threads
-)
-
-#t_realign_outdir <- file.path(realign_outdir, tid)
-#parse_dir_path(t_realign_outdir, create = TRUE)
-#realign_tbam <- realign_hla_new(
-#  sid = tid,
-#  r1 = args$R1,
-#  r2 = args$R2,
-#  hla_ref = subj_hla_ref_fasta,
-#  outdir = t_realign_outdir,
-#  nproc = args$threads
-#)
-#
-#n_realign_outdir <- file.path(realign_outdir, nid)
-#parse_dir_path(n_realign_outdir, create = TRUE)
-#realign_nbam <- realign_hla_new(
-#  sid = nid,
-#  r1 = args$r1,
-#  r2 = args$r2,
-#  hla_ref = subj_hla_ref_fasta,
-#  outdir = n_realign_outdir,
-#  nproc = args$threads
-#)
-
-# FIXME: old realignment, remove later
-realign_nbam <- NULL
-if (!is.null(args$realn_nbam) && file.exists(args$realn_nbam)) {
-  print("[INFO] Provided with HLA-realigned normal BAM file")
-  print("[INFO] Checking the ref sequence header")
-  seqinfo_realn_nbam <- get_seqinfo_from_bam_header(bam = args$realn_nbam)
-  if (all(grepl("^hla", names(seqinfo_realn_nbam)))) {
-    realign_nbam <- args$realn_nbam
-    print("[INFO] Checking the ref sequence header [DONE]")
-    print("[INFO] Checking if the HLA-aligned BAM has an index")
-    if (file.exists(paste(realign_nbam, ".bai", sep = ""))) {
-      print("[INFO] Checking if the HLA-aligned BAM has an index [DONE]")
-    } else {
-      print("[ERROR] Found no index for the HLA-aligned BAM")
-      quit(status = 1)
-    }
-  } else {
-    print(paste(
-      "[ERROR] Found no hla reference in the header",
-      " in the provided HLA-realigned BAM",
-      sep = ""
-    ))
-    quit(status = 1)
-  }
-} else {
-  n_realign_outdir <- file.path(realign_outdir, nid)
-  parse_dir_path(n_realign_outdir, create = TRUE)
-  realign_nbam <- realign_hla(
-    sid = nid,
-    bam = args$nbam,
-    genome = args$genome,
-    hla_index = subj_hla_ref_index,
-    tags = hla_kmer_tag,
-    bed = args$hlabed,
-    outdir = n_realign_outdir,
-    threads = args$threads
-  )
-}
-stop()
 
 print("[INFO] Counting sequencing depth from realigned normal BAM")
 n_seq_depth <- count_n_reads_from_bam(bam = realign_nbam, tagfilter = list(NM=c(0)))
