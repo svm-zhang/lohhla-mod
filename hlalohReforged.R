@@ -150,39 +150,6 @@ get_sm_from_rg <- function(rg) {
   sm
 }
 
-# FIXME: this can go away once I clear out mpileup
-run_cmd <- function(cmd, args, stdout, stderr) {
-  if (is.logical(stdout)) {
-    print("[ERROR] run_cmd function does not capture stdout to a variable")
-    print("[ERROR] Please directly use system2 function instead")
-    quit(status = 1)
-  }
-
-  rc <- system2(
-    command = cmd,
-    args = args,
-    stdout = stdout,
-    stderr = stderr,
-    wait = TRUE
-  )
-
-  if (is.null(rc) && stdout != TRUE) {
-    # something is wrong
-    print(paste("[ERROR] no command was executed.",
-      "Return code returns NULL. Please check",
-      sep = ""
-    ))
-    quit(status = 1)
-  }
-
-  if (rc != 0) {
-    print(paste("[ERROR]: Running ", cmd, " return exit code ", rc, sep = ""))
-    print(paste("Plaese check STDOUT ", stdout, " for details", sep = ""))
-    print(paste("Plaese check STDERR ", stderr, " for details", sep = ""))
-    quit(status = 1)
-  }
-}
-
 get_hla_alleles <- function(hla_res, hla_ref_fasta) {
   print("[INFO] Loading HLA typing result")
   expected_cols_in_hla_res <- c(
@@ -456,25 +423,6 @@ get_indel_length <- function(cigar) {
   total
 }
 
-# FIXME: just use Rsamtools Pileup
-run_mpileup <- function(bam, hlafa, outdir) {
-  # FIXME: samtools mpileup error message cannot be captured properly this way
-  stderr <- file.path(outdir, "samtools.mpileup.stderr")
-  dt <- fread(text = system2(
-    command = "samtools",
-    args = c(
-      "mpileup", "-f", hlafa, "--rf", 2, "--output-QNAME", "--output-extra", "FLAG", bam
-    ),
-    stdout = TRUE,
-    stderr = stderr,
-    wait = TRUE
-  ), select = c(1, 2, 3, 4, 7, 8))
-
-  names(dt) <- c("seqnames", "start", "ref", "dp", "qname", "flag")
-
-  dt
-}
-
 #' Function to calculate HLA allele coverage
 get_allele_coverage <- function(alleles, bam, hlafa, outdir, sid, min_necnt) {
   allele_coverage <- list()
@@ -547,54 +495,6 @@ get_allele_coverage <- function(alleles, bam, hlafa, outdir, sid, min_necnt) {
   allele_coverage
 }
 
-get_once_count_at_mm <- function(hla_cov_dt, allele, mm_pos) {
-  hla_cov_dt <- hla_cov_dt[start %in% mm_pos]
-  if(nrow(hla_cov_dt) == 0) {
-    return(data.table(
-      seqnames = allele,
-      start = mm_pos,
-      ref = NA,
-      dp = 0,
-      qname = "",
-      flag = 0
-    ))
-  }
-  # each row one read covering one position
-  hla_uniq_cov_dt <- cSplit(
-    hla_cov_dt, c("qname", "flag"),
-    sep = ",",
-    direction = "long", fixed = TRUE, type.convert = FALSE
-  )
-  hla_uniq_cov_dt[, read_idx := ifelse(
-    bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
-  ),
-  by=seq_len(nrow(hla_uniq_cov_dt))
-  ]
-  hla_uniq_cov_dt[, qname := paste(qname, read_idx, sep="/")]
-  hla_uniq_cov_dt[, read_idx := NULL]
-
-  # unique so that each read contribue only once
-  hla_uniq_cov_dt <- unique(hla_uniq_cov_dt, by = "qname")
-  # count the # reads per position
-  hla_uniq_cov_dt[, "udp" := .N, by = list(start)]
-  # remove duplicate positions
-  hla_uniq_cov_dt <- unique(hla_uniq_cov_dt, by = "start")
-  # join back with the input dt to add udp column
-  hla_uniq_cov_dt <- merge(
-    hla_cov_dt,
-    hla_uniq_cov_dt[, c("start", "udp")],
-    by = "start", all.x = TRUE
-  )
-  # some positions can have no read covering after the unique operation
-  # fill in 0
-  #dp <- NULL # this is to avoid "no visible binding for global variable..."
-  hla_uniq_cov_dt[, dp := ifelse(is.na(udp), 0, udp)]
-  hla_uniq_cov_dt[, ":="(dp = dp + 1, udp = NULL)]
-
-  hla_uniq_cov_dt
-  #hla_uniq_cov_dt[, c("seqnames", "start", "ref", "dp")]
-}
-
 binning_interval_to_dt <- function(start_pos, end_pos, bin_size) {
 
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
@@ -659,27 +559,6 @@ collate_tumor_and_normal_cov_per_allele <- function(
     flag = NULL, i.flag = NULL
   )]
   #allele_cov_dt[, "logR" := log2((t_dp / n_dp) * mulfactor)] # nolint
-
-  allele_cov_dt
-}
-
-get_bined_logR_estimate_per_allele <- function(
-  allele_cov_dt, bin_dt, allele, mulfactor
-) {
-
-  # make granges for allele coverage dt and bins
-  tmp_gr <- GenomicRanges::makeGRangesFromDataFrame(allele_cov_dt)
-  bin_dt[, "seqnames" := allele]
-  bin_dt[, "bin_index" := seq(1, nrow(bin_dt))]
-  bin_gr <- GenomicRanges::makeGRangesFromDataFrame(
-    bin_dt,
-    keep.extra.columns = TRUE
-  )
-  ovl <- GenomicRanges::findOverlaps(tmp_gr, bin_gr)
-  allele_cov_dt[S4Vectors::queryHits(ovl), c("bin", "bin_index")] <- bin_dt[
-    S4Vectors::subjectHits(ovl), c("bin", "bin_index")
-  ]
-  allele_cov_dt[, end := NULL]
 
   allele_cov_dt
 }
