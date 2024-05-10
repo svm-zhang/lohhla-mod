@@ -495,7 +495,7 @@ get_allele_coverage <- function(alleles, bam, hlafa, outdir, sid, min_necnt) {
   allele_coverage
 }
 
-binning_interval_to_dt <- function(start_pos, end_pos, bin_size) {
+bin_allele_cov_interval_to_dt <- function(start_pos, end_pos, bin_size) {
 
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
   # the last bin can be less than 150, so merged with second last bin
@@ -512,7 +512,7 @@ binning_interval_to_dt <- function(start_pos, end_pos, bin_size) {
   bin_dt
 }
 
-make_bins <- function(
+makeBins <- function(
   allele, start_pos, end_pos, allele_length, bin_size=150) {
 
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
@@ -546,7 +546,7 @@ make_bins <- function(
 }
 
 collate_tumor_and_normal_cov_per_allele <- function(
-  t_allele_cov_dt, n_allele_cov_dt, allele, mulfactor
+  t_allele_cov_dt, n_allele_cov_dt, allele, multfactor
 ) {
 
   setkey(t_allele_cov_dt, start, ref)
@@ -558,38 +558,18 @@ collate_tumor_and_normal_cov_per_allele <- function(
     i.seqnames = NULL, dp = NULL, i.dp = NULL, qname = NULL, i.qname = NULL,
     flag = NULL, i.flag = NULL
   )]
-  #allele_cov_dt[, "logR" := log2((t_dp / n_dp) * mulfactor)] # nolint
+  #allele_cov_dt[, "logR" := log2((t_dp / n_dp) * multfactor)] # nolint
 
   allele_cov_dt
 }
 
-#binning <- function(cov_dt, bin_dt, allele) {
-#  # make granges for allele coverage dt and bins
-#  tmp_gr <- GenomicRanges::makeGRangesFromDataFrame(
-#    cov_dt,
-#    start.field = "pos", end.field = "pos"
-#  )
-#  bin_dt[, "seqnames" := allele]
-#  bin_gr <- GenomicRanges::makeGRangesFromDataFrame(
-#    bin_dt,
-#    keep.extra.columns = TRUE
-#  )
-#  ovl <- GenomicRanges::findOverlaps(tmp_gr, bin_gr)
-#  cov_dt[S4Vectors::queryHits(ovl), "bin"] <- bin_dt[
-#    S4Vectors::subjectHits(ovl), "bin"
-#  ]
-#  cov_dt[, end := NULL]
-#
-#  cov_dt
-#}
-
 #call_hla_loh <- function(
 #    alleles, tbam, nbam, subj_hla_ref_fasta, outdir,
-#    purity, ploidy, mulfactor, min_dp, min_necnt,
+#    purity, ploidy, multfactor, min_dp, min_necnt,
 #    tid = "example_tumor", nid = "example_normal", gamma = 1) {
 call_hla_loh <- function(
     row, tbam, nbam, hlaref, outdir,
-    purity, ploidy, mulfactor, min_dp, min_necnt,
+    purity, ploidy, multfactor, min_dp, min_necnt,
     tid = "example_tumor", nid = "example_normal", gamma = 1) {
 
   a1 <- row["A1"]
@@ -597,12 +577,15 @@ call_hla_loh <- function(
   alleles_str <- paste(c(a1, a2), collapse = " and ")
   print(paste("[INFO] Analyze LOH for ", alleles_str, sep = ""))
 
+  report <- init_loh_report(a1, a2)
+
   hla_seq <- read.fasta(hlaref)
   a1_seq <- hla_seq[[a1]]
   a2_seq <- hla_seq[[a2]]
   print(paste(
     "[INFO] Align sequences between ", alleles_str, sep = ""))
   mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
+  report$Num_MM <- length(mm$diffSeq1)
 
   if (length(mm$diffSeq1) == 0) {
     print(paste(
@@ -611,7 +594,7 @@ call_hla_loh <- function(
       sep = " "
     ))
     print("[INFO] no call will be made. Move to the next HLA gene")
-    return
+    return(data.table(t(report)))
   }
 
   if (length(mm$diffSeq1) < 5) {
@@ -623,7 +606,7 @@ call_hla_loh <- function(
     "[INFO] Make bins for allele ", a1, sep = ""
   ))
   # FIXME: should simply pass mm variable, rework on getting mm
-  a1_bin_dt <- make_bins(
+  a1_bin_dt <- makeBins(
     allele = a1,
     start_pos = mm$a1_aln_start,
     end_pos = mm$a1_aln_end,
@@ -632,7 +615,7 @@ call_hla_loh <- function(
   print(paste(
     "[INFO] Make bins for allele ", a1, sep = ""
   ))
-  a2_bin_dt <- make_bins(
+  a2_bin_dt <- makeBins(
     allele = a2,
     start_pos = mm$a2_aln_start,
     end_pos = mm$a2_aln_end,
@@ -647,94 +630,110 @@ call_hla_loh <- function(
   n_a2_cov <- n_a2_cov[count > min_dp]
   t_a1_cov <- t_a1_cov[pos %in% n_a1_cov$pos]
   t_a2_cov <- t_a2_cov[pos %in% n_a2_cov$pos]
-  # FIXME: need to create a class with default values
-  # FIXME: need to test
   if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
     print("[INFO] Found no coverage for either allele in normal")
     print("[INFO] Move to next HLA gene")
-    return(
-      data.table(
-        "HLA_A1" = a1, "HLA_A2" = a2,
-        "HLA_A1_CN" = NA,
-        "HLA_A1_CN_Lower" = NA,
-        "HLA_A1_CN_Upper" = NA,
-        "HLA_A2_CN" = NA,
-        "HLA_A2_CN_Lower" = NA,
-        "HLA_A2_CN_Upper" = NA,
-        "HLA_A1_Median_LogR" = NA,
-        "HLA_A2_Median_LogR" = NA,
-        "HLA_A1_MM_Median_LogR" = NA,
-        "HLA_A2_MM_Median_logR" = NA,
-        "Median_BAF" = NA,
-        "HLA_MM_Once_LogR_Paired_Pvalue" = NA,
-        "HLA_MM_Once_LogR_Unpaired_Pvalue" = NA,
-        "Num_MM" = length(mm$diffSeq1),
-        "Num_Bins" = NA,
-        "Num_CN_Loss_Supporting_Bins" = NA
-      )
-    )
+    return(data.table(t(report)))
   }
   print(paste(
     "[INFO] Combine coverage data table for allele ", a1, sep = ""
   ))
-  a1_cov_dt <- combine_allelic_tn_cov_table(t_dt = t_a1_cov, n_dt = n_a1_cov)
-  a1_cov_dt <- binning(cov_dt = a1_cov_dt, bin_dt = a1_bin_dt)
+  # FIXME: have a prep_allelic_cov function
+  a1_cov_dt <- combine_tn_cov(t_dt = t_a1_cov, n_dt = n_a1_cov)
+  a1_cov_dt <- bin_allele_cov(cov_dt = a1_cov_dt, bin_dt = a1_bin_dt)
+  a1_cov_dt <- estimate_logR(cov_dt = a1_cov_dt, multfactor = multfactor)
   names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
-  a2_cov_dt <- combine_allelic_tn_cov_table(t_dt = t_a2_cov, n_dt = n_a2_cov)
-  a2_cov_dt <- binning(cov_dt = a2_cov_dt, bin_dt = a2_bin_dt)
+  a2_cov_dt <- combine_tn_cov(t_dt = t_a2_cov, n_dt = n_a2_cov)
+  a2_cov_dt <- bin_allele_cov(cov_dt = a2_cov_dt, bin_dt = a2_bin_dt)
+  a2_cov_dt <- estimate_logR(cov_dt = a2_cov_dt, multfactor = multfactor)
   names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
-
-  print(paste(
-    "[INFO] Get binned tumor and normal dp for ", alleles_str, sep = ""
-  ))
-  print(a2_cov_dt)
-  a1_cov_dt[, a1_bin_t_dp := as.numeric(median(a1_t_dp, na.rm=TRUE)), by = "a1_bin"]
-  a1_cov_dt[, a1_bin_n_dp := as.numeric(median(a1_n_dp, na.rm=TRUE)), by = "a1_bin"]
-  a2_cov_dt[, a2_bin_t_dp := as.numeric(median(a2_t_dp, na.rm=TRUE)), by = "a2_bin"]
-  a2_cov_dt[, a2_bin_n_dp := as.numeric(median(a2_n_dp, na.rm=TRUE)), by = "a2_bin"]
-
-  print("[INFO] Get local logR corrector")
-  a1_cov_dt[, bin_multfactor := a1_bin_n_dp / a1_bin_t_dp]
-  a2_cov_dt[, bin_multfactor := a2_bin_n_dp / a2_bin_t_dp]
-  local_multfactor <- min(
-    median(unique(a1_cov_dt, by="a1_bin")$bin_multfactor, na.rm=TRUE),
-    median(unique(a2_cov_dt, by="a2_bin")$bin_multfactor, na.rm=TRUE)
-  )
-  if (local_multfactor > 1) {
-    local_multfactor <- 1
-  } else {
-    if (multfactor > local_multfactor) {
-      local_multfactor <- mulfactor
-    }
-  }
-  a1_cov_dt[, bin_multfactor := NULL]
-  a2_cov_dt[, bin_multfactor := NULL]
-
-  a1_cov_dt[, a1_logR := log2(a1_t_dp / a1_n_dp * local_multfactor)]
-  a1_cov_dt[, a1_bin_logR := median(a1_logR, na.rm = TRUE), by=a1_bin]
-  a2_cov_dt[, a2_logR := log2(a2_t_dp / a2_n_dp * local_multfactor)]
-  a2_cov_dt[, a2_bin_logR := median(a2_logR, na.rm = TRUE), by=a2_bin]
-  print(multfactor)
-  print(local_multfactor)
-
-  print(a1_cov_dt[a1_bin == 14])
-  print(a2_cov_dt[a2_bin == 14])
-  stop()
   print(paste(
     "[INFO] Get median logR for ", alleles_str, sep = ""
   ))
-  a1_median_logr <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
-  a2_median_logr <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
-  a1_mm_median_logr <- median(
-    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR, na.rm = TRUE
+  report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
+  report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
+
+  bin_logR_dt <- estimate_binned_logR(
+    a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
   )
-  a2_mm_median_logr <- median(
-    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR, na.rm = TRUE
-  )
-  print(a1_median_logr)
-  print(a2_median_logr)
-  print(a1_mm_median_logr)
-  print(a2_mm_median_logr)
+  bin_logR_dt[, cn_loss_test_bin := apply(
+    .SD, 1, test_cn_loss_using_log_odds_ratio
+    ),
+    .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
+  ]
+  bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  report$Num_Bins <- nrow(bin_logR_dt)
+
+  mm_est_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
+  if (is.null(mm_est_dt)) {
+    print("[INFO] No coverage info found for both alleles at mm sites")
+    print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
+    return(data.table(t(report)))
+  }
+  mm_est_dt <- estimate_baf(mm_dt = mm_est_dt, bin_dt = bin_logR_dt)
+
+  print("[INFO] Estimate copy number at mismatch sites")
+  cn_dt <- estimate_cn(mm_dt = mm_est_dt)
+  #na_cn_est <- nb_cn_est <- NA
+  print(cn_dt[, c("bin", "logR_combined_bin", "a1_bin_cn", "a2_bin_cn")])
+  report$HLA_A1_CN <- median(cn_dt$a1_bin_cn, na.rm = TRUE)
+  report$HLA_A2_CN <- median(cn_dt$a2_bin_cn, na.rm = TRUE)
+
+  cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a1")
+  report$HLA_A1_CN_Lower <- cn_est_conf$est_lower
+  report$HLA_A1_CN_Upper <- cn_est_conf$est_upper
+  cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a2")
+  report$HLA_A2_CN_Lower <- cn_est_conf$est_lower
+  report$HLA_A2_CN_Upper <- cn_est_conf$est_upper
+  print(report)
+  stop()
+
+  #print(paste(
+  #  "[INFO] Get binned tumor and normal dp for ", alleles_str, sep = ""
+  #))
+  #a1_cov_dt[, a1_bin_t_dp := as.numeric(median(a1_t_dp, na.rm=TRUE)), by = "a1_bin"]
+  #a1_cov_dt[, a1_bin_n_dp := as.numeric(median(a1_n_dp, na.rm=TRUE)), by = "a1_bin"]
+  #a2_cov_dt[, a2_bin_t_dp := as.numeric(median(a2_t_dp, na.rm=TRUE)), by = "a2_bin"]
+  #a2_cov_dt[, a2_bin_n_dp := as.numeric(median(a2_n_dp, na.rm=TRUE)), by = "a2_bin"]
+  #print(a2_cov_dt)
+
+  #print("[INFO] Get local logR corrector")
+  #a1_cov_dt[, bin_multfactor := a1_bin_n_dp / a1_bin_t_dp]
+  #a2_cov_dt[, bin_multfactor := a2_bin_n_dp / a2_bin_t_dp]
+  #local_multfactor <- min(
+  #  median(unique(a1_cov_dt, by="a1_bin")$bin_multfactor, na.rm=TRUE),
+  #  median(unique(a2_cov_dt, by="a2_bin")$bin_multfactor, na.rm=TRUE)
+  #)
+  #if (local_multfactor > 1) {
+  #  local_multfactor <- 1
+  #} else {
+  #  if (multfactor > local_multfactor) {
+  #    local_multfactor <- multfactor
+  #  }
+  #}
+  #a1_cov_dt[, bin_multfactor := NULL]
+  #a2_cov_dt[, bin_multfactor := NULL]
+
+  #a1_cov_dt[, a1_logR := log2(a1_t_dp / a1_n_dp * local_multfactor)]
+  #a1_cov_dt[, a1_bin_logR := median(a1_logR, na.rm = TRUE), by=a1_bin]
+  #a2_cov_dt[, a2_logR := log2(a2_t_dp / a2_n_dp * local_multfactor)]
+  #a2_cov_dt[, a2_bin_logR := median(a2_logR, na.rm = TRUE), by=a2_bin]
+  #print(multfactor)
+  #print(local_multfactor)
+
+  #print(paste(
+  #  "[INFO] Get median logR for ", alleles_str, sep = ""
+  #))
+  #a1_median_logr <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
+  #a2_median_logr <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
+  #a1_mm_median_logr <- median(
+  #  a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR, na.rm = TRUE
+  #)
+  #a2_mm_median_logr <- median(
+  #  a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR, na.rm = TRUE
+  #)
+  #print(a1_median_logr)
+  #print(a2_median_logr)
 
   #check_if_alleles_in_seqinfo(alleles, tbam)
   #check_if_alleles_in_seqinfo(alleles, nbam)
@@ -791,18 +790,17 @@ call_hla_loh <- function(
   #    )
   #  )
   #}
-  stop()
 
   #print(paste(
   #  "[INFO] Make bins for ", alleles_str, sep = ""
   #))
-  #a1_bin_dt <- make_bins(
+  #a1_bin_dt <- makeBins(
   #  start_pos = mm$a1_aln_start,
   #  end_pos = mm$a1_aln_end,
   #  allele_length = length(a1_seq),
   #  bin_size = 150
   #)
-  #a2_bin_dt <- make_bins(
+  #a2_bin_dt <- makeBins(
   #  start_pos = mm$a2_aln_start,
   #  end_pos = mm$a2_aln_end,
   #  allele_length = length(a2_seq),
@@ -817,9 +815,9 @@ call_hla_loh <- function(
   #  t_allele_cov_dt = t_hla_cov[[a1]],
   #  n_allele_cov_dt = n_hla_cov[[a1]],
   #  allele = a1,
-  #  mulfactor = mulfactor
+  #  multfactor = multfactor
   #)
-  #a1_cov_dt <- binning(
+  #a1_cov_dt <- bin_allele_cov(
   #  allele_cov_dt = a1_cov_dt,
   #  bin_dt = a1_bin_dt,
   #  allele = a1
@@ -832,9 +830,9 @@ call_hla_loh <- function(
   #  t_allele_cov_dt = t_hla_cov[[a2]],
   #  n_allele_cov_dt = n_hla_cov[[a2]],
   #  allele = a2,
-  #  mulfactor = mulfactor
+  #  multfactor = multfactor
   #)
-  #a2_cov_dt <- binning(
+  #a2_cov_dt <- bin_allele_cov(
   #  allele_cov_dt = a2_cov_dt,
   #  bin_dt = a2_bin_dt,
   #  allele = a2
@@ -863,7 +861,7 @@ call_hla_loh <- function(
   #  local_multfactor <- 1
   #} else {
   #  if (multfactor > local_multfactor) {
-  #    local_multfactor <- mulfactor
+  #    local_multfactor <- multfactor
   #  }
   #}
   #a1_cov_dt[, bin_multfactor := NULL]
@@ -883,111 +881,111 @@ call_hla_loh <- function(
   #a2_mm_cov_dt <- a2_cov_dt[a2_start %in% mm$diffSeq2]
   #a1_mm_median_logr <- median(a1_mm_cov_dt$a1_logR, na.rm = TRUE)
   #a2_mm_median_logr <- median(a2_mm_cov_dt$a2_logR, na.rm = TRUE)
-  a1_keep_cols <- c(
-    "a1_seqnames", "a1_bin", "a1_bin_t_dp", "a1_bin_n_dp", "a1_bin_logR"
-  )
-  a2_keep_cols <- c(
-    "a2_seqnames", "a2_bin", "a2_bin_t_dp", "a2_bin_n_dp", "a2_bin_logR"
-  )
-  bin_logR_dt <- merge(
-    unique(a1_cov_dt, by="a1_bin")[, ..a1_keep_cols],
-    unique(a2_cov_dt, by="a2_bin")[, ..a2_keep_cols],
-    by.x = c("a1_bin"), by.y = c("a2_bin"),
-    all.x = TRUE, all.y = TRUE
-  )
-  bin_logR_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
-  bin_logR_dt[, logR_combined_bin := log2((a1_bin_t_dp + a2_bin_t_dp) / (a1_bin_n_dp + a2_bin_n_dp) * local_multfactor)]
-  bin_logR_dt[, cn_loss_test_bin := apply(
-    .SD, 1, test_cn_loss_using_log_odds_ratio
-    ),
-    .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
-  ]
-  bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  #a1_keep_cols <- c(
+  #  "a1_seqnames", "a1_bin", "a1_bin_t_dp", "a1_bin_n_dp", "a1_bin_logR"
+  #)
+  #a2_keep_cols <- c(
+  #  "a2_seqnames", "a2_bin", "a2_bin_t_dp", "a2_bin_n_dp", "a2_bin_logR"
+  #)
+  #bin_logR_dt <- merge(
+  #  unique(a1_cov_dt, by="a1_bin")[, ..a1_keep_cols],
+  #  unique(a2_cov_dt, by="a2_bin")[, ..a2_keep_cols],
+  #  by.x = c("a1_bin"), by.y = c("a2_bin"),
+  #  all.x = TRUE, all.y = TRUE
+  #)
+  #bin_logR_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
+  #bin_logR_dt[, logR_combined_bin := log2((a1_bin_t_dp + a2_bin_t_dp) / (a1_bin_n_dp + a2_bin_n_dp) * local_multfactor)]
+  #bin_logR_dt[, cn_loss_test_bin := apply(
+  #  .SD, 1, test_cn_loss_using_log_odds_ratio
+  #  ),
+  #  .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
+  #]
+  #bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
 
-  print("[INFO] Estimate copy number at mismatch sites")
-  mm_est_dt <- data.table(a1_start = mm$diffSeq1, a2_start = mm$diffSeq2)
+  #print("[INFO] Estimate copy number at mismatch sites")
+  #mm_est_dt <- data.table(a1_start = mm$diffSeq1, a2_start = mm$diffSeq2)
 
-  mm_est_dt <- mm_est_dt[
-    a1_start %in% a1_cov_dt$a1_start & a2_start %in% a2_cov_dt$a2_start
-  ]
-  if (nrow(mm_est_dt) == 0) {
-    print("[INFO] No coverage info found for both alleles at mm sites")
-    print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
-    return(
-      data.table(
-        "HLA_A1" = a1, "HLA_A2" = a2,
-        "HLA_A1_CN" = NA,
-        "HLA_A1_CN_Lower" = NA,
-        "HLA_A1_CN_Upper" = NA,
-        "HLA_A2_CN" = NA,
-        "HLA_A2_CN_Lower" = NA,
-        "HLA_A2_CN_Upper" = NA,
-        "HLA_A1_Median_LogR" = a1_median_logr,
-        "HLA_A2_Median_LogR" = a2_median_logr,
-        "HLA_A1_MM_Median_LogR" = a1_mm_median_logr,
-        "HLA_A2_MM_Median_logR" = a2_mm_median_logr,
-        "Median_BAF" = NA,
-        "HLA_MM_Once_LogR_Paired_Pvalue" = NA,
-        "HLA_MM_Once_LogR_Unpaired_Pvalue" = NA,
-        "Num_MM" = length(mm$diffSeq1),
-        "Num_Bins" = nrow(
-          bin_logR_dt[bin > 0 & bin < min(length(a1_seq), length(a2_seq))]
-        ),
-        "Num_CN_Loss_Supporting_Bins" = NA
-      )
-    )
-  }
-  a1_keep_cols <- c(
-    "a1_seqnames", "a1_bin", "a1_start", "a1_ref", "a1_t_dp", "a1_n_dp", "a1_logR"
-  )
-  a2_keep_cols <- c(
-    "a2_seqnames", "a2_bin", "a2_start", "a2_ref", "a2_t_dp", "a2_n_dp", "a2_logR"
-  )
-  mm_est_dt <- merge(mm_est_dt, a1_cov_dt[, ..a1_keep_cols], by="a1_start", all.x=TRUE)
-  mm_est_dt <- merge(mm_est_dt, a2_cov_dt[, ..a2_keep_cols], by="a2_start", all.x=TRUE)
-  mm_est_dt[, ":="(bin = a1_bin, a1_bin = NULL, a2_bin = NULL)]
-  keep_cols <- c(
-    "bin", "a1_bin_t_dp", "a1_bin_n_dp", "a1_bin_logR",
-    "a2_bin_t_dp", "a2_bin_n_dp", "a2_bin_logR",
-    "logR_combined_bin", "capture_bias_bin"
-  )
-  mm_est_dt <- merge(mm_est_dt, bin_logR_dt[, ..keep_cols], by = "bin", all.x=TRUE)
+  #mm_est_dt <- mm_est_dt[
+  #  a1_start %in% a1_cov_dt$a1_start & a2_start %in% a2_cov_dt$a2_start
+  #]
+  #if (nrow(mm_est_dt) == 0) {
+  #  print("[INFO] No coverage info found for both alleles at mm sites")
+  #  print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
+  #  return(
+  #    data.table(
+  #      "HLA_A1" = a1, "HLA_A2" = a2,
+  #      "HLA_A1_CN" = NA,
+  #      "HLA_A1_CN_Lower" = NA,
+  #      "HLA_A1_CN_Upper" = NA,
+  #      "HLA_A2_CN" = NA,
+  #      "HLA_A2_CN_Lower" = NA,
+  #      "HLA_A2_CN_Upper" = NA,
+  #      "HLA_A1_Median_LogR" = a1_median_logr,
+  #      "HLA_A2_Median_LogR" = a2_median_logr,
+  #      "HLA_A1_MM_Median_LogR" = a1_mm_median_logr,
+  #      "HLA_A2_MM_Median_logR" = a2_mm_median_logr,
+  #      "Median_BAF" = NA,
+  #      "HLA_MM_Once_LogR_Paired_Pvalue" = NA,
+  #      "HLA_MM_Once_LogR_Unpaired_Pvalue" = NA,
+  #      "Num_MM" = length(mm$diffSeq1),
+  #      "Num_Bins" = nrow(
+  #        bin_logR_dt[bin > 0 & bin < min(length(a1_seq), length(a2_seq))]
+  #      ),
+  #      "Num_CN_Loss_Supporting_Bins" = NA
+  #    )
+  #  )
+  #}
+  #a1_keep_cols <- c(
+  #  "a1_seqnames", "a1_bin", "a1_start", "a1_ref", "a1_t_dp", "a1_n_dp", "a1_logR"
+  #)
+  #a2_keep_cols <- c(
+  #  "a2_seqnames", "a2_bin", "a2_start", "a2_ref", "a2_t_dp", "a2_n_dp", "a2_logR"
+  #)
+  #mm_est_dt <- merge(mm_est_dt, a1_cov_dt[, ..a1_keep_cols], by="a1_start", all.x=TRUE)
+  #mm_est_dt <- merge(mm_est_dt, a2_cov_dt[, ..a2_keep_cols], by="a2_start", all.x=TRUE)
+  #mm_est_dt[, ":="(bin = a1_bin, a1_bin = NULL, a2_bin = NULL)]
+  #keep_cols <- c(
+  #  "bin", "a1_bin_t_dp", "a1_bin_n_dp", "a1_bin_logR",
+  #  "a2_bin_t_dp", "a2_bin_n_dp", "a2_bin_logR",
+  #  "logR_combined_bin", "capture_bias_bin"
+  #)
+  #mm_est_dt <- merge(mm_est_dt, bin_logR_dt[, ..keep_cols], by = "bin", all.x=TRUE)
 
-  mm_est_dt[, baf := a1_t_dp / (a1_t_dp + a2_t_dp)] # nolint
-  mm_est_dt[, baf_combined := baf / capture_bias_bin]
-  mm_est_dt[, "nA_combined_bin" :=
-    (purity - 1 + baf_combined * 2^(logR_combined_bin / gamma) * # nolint
-      ((1 - purity) * 2 + purity * ploidy)) / purity,
-  ]
-  mm_est_dt[, "nB_combined_bin" :=
-    (purity - 1 - (baf_combined - 1) * 2^(logR_combined_bin / gamma) * # nolint
-      ((1 - purity) * 2 + purity * ploidy)) / purity,
-  ]
-  mm_est_dt[, ":="(
-    median_nA_combined_bin = median(nA_combined_bin, na.rm = TRUE),
-    median_nB_combined_bin = median(nB_combined_bin, na.rm = TRUE)
-  ),
-  by = "bin"
-  ]
+  #mm_est_dt[, baf := a1_t_dp / (a1_t_dp + a2_t_dp)] # nolint
+  #mm_est_dt[, baf_combined := baf / capture_bias_bin]
+  #mm_est_dt[, "nA_combined_bin" :=
+  #  (purity - 1 + baf_combined * 2^(logR_combined_bin / gamma) * # nolint
+  #    ((1 - purity) * 2 + purity * ploidy)) / purity,
+  #]
+  #mm_est_dt[, "nB_combined_bin" :=
+  #  (purity - 1 - (baf_combined - 1) * 2^(logR_combined_bin / gamma) * # nolint
+  #    ((1 - purity) * 2 + purity * ploidy)) / purity,
+  #]
+  #mm_est_dt[, ":="(
+  #  median_nA_combined_bin = median(nA_combined_bin, na.rm = TRUE),
+  #  median_nB_combined_bin = median(nB_combined_bin, na.rm = TRUE)
+  #),
+  #by = "bin"
+  #]
 
-  mm_est_bin_dt <- unique(mm_est_dt, by = "bin")
-  na_cn_est <- nb_cn_est <- NA
-  na_cn_est <- median(mm_est_bin_dt$median_nA_combined_bin, na.rm = TRUE)
-  nb_cn_est <- median(mm_est_bin_dt$median_nB_combined_bin, na.rm = TRUE)
+  #mm_est_bin_dt <- unique(mm_est_dt, by = "bin")
+  #na_cn_est <- nb_cn_est <- NA
+  #na_cn_est <- median(mm_est_bin_dt$median_nA_combined_bin, na.rm = TRUE)
+  #nb_cn_est <- median(mm_est_bin_dt$median_nB_combined_bin, na.rm = TRUE)
 
-  na_cn_pvalue <- nb_cn_pvalue <- 99999.0 
-  na_cn_test <- t_test_with_na(
-   mm_est_bin_dt$median_nA_combined_bin
-  )
-  na_cn_est_conf <- na_cn_test$conf.int
-  na_cn_est_lower <- na_cn_est_conf[1]
-  na_cn_est_upper <- na_cn_est_conf[2]
-  nb_cn_test <- t_test_with_na(
-    mm_est_bin_dt$median_nB_combined_bin
-  )
-  nb_cn_est_conf <- nb_cn_test$conf.int
-  nb_cn_est_lower <- nb_cn_est_conf[1]
-  nb_cn_est_upper <- nb_cn_est_conf[2]
+  #na_cn_pvalue <- nb_cn_pvalue <- 99999.0 
+  #na_cn_test <- t_test_with_na(
+  # mm_est_bin_dt$median_nA_combined_bin
+  #)
+  #na_cn_est_conf <- na_cn_test$conf.int
+  #na_cn_est_lower <- na_cn_est_conf[1]
+  #na_cn_est_upper <- na_cn_est_conf[2]
+  #nb_cn_test <- t_test_with_na(
+  #  mm_est_bin_dt$median_nB_combined_bin
+  #)
+  #nb_cn_est_conf <- nb_cn_test$conf.int
+  #nb_cn_est_lower <- nb_cn_est_conf[1]
+  #nb_cn_est_upper <- nb_cn_est_conf[2]
 
 
   #hla_gene <- basename(outdir)
@@ -1115,6 +1113,27 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
 
 }
 
+init_loh_report <- function(a1, a2) {
+  list(
+    "HLA_A1" = a1,
+    "HLA_A2" = a2,
+    "HLA_A1_CN" = NA,
+    "HLA_A1_CN_Lower" = NA,
+    "HLA_A1_CN_Upper" = NA,
+    "HLA_A2_CN" = NA,
+    "HLA_A2_CN_Lower" = NA,
+    "HLA_A2_CN_Upper" = NA,
+    "HLA_A1_Median_LogR" = NA,
+    "HLA_A2_Median_LogR" = NA,
+    "HLA_A1_MM_Median_LogR" = NA,
+    "HLA_A2_MM_Median_logR" = NA,
+    "Median_BAF" = NA,
+    "Num_MM" = 0,
+    "Num_Bins" = NA,
+    "Num_CN_Loss_Supporting_Bins" = NA
+  )
+}
+
 get_allele_coverage_new <- function(allele, bam) {
   print(paste(
     "[INFO] Get coverage for ", allele, " from ", bam, sep = ""
@@ -1143,8 +1162,18 @@ get_allele_coverage_new <- function(allele, bam) {
   p_dt
 }
 
-combine_allelic_tn_cov_table <- function(t_dt, n_dt) {
+combine_tn_cov <- function(t_dt, n_dt, multfactor) {
 
+  a_t <- unique(t_dt$seqnames)
+  a_n <- unique(n_dt$seqnames)
+  if ( length(a_t) != 1 || length(a_n) != 1 ) {
+    print("[ERROR] Only one seqname is expected in tumor and normal tables")
+    quit(status = 1)
+  }
+  if ( a_t != a_n ) {
+    print("[ERROR] To be combined tumor and normal tables have diff seqnames")
+    quit(status = 1)
+  }
   setkey(t_dt, seqnames, pos, nucleotide)
   setkey(n_dt, seqnames, pos, nucleotide)
   allele_cov_dt <- t_dt[n_dt]
@@ -1154,7 +1183,7 @@ combine_allelic_tn_cov_table <- function(t_dt, n_dt) {
   allele_cov_dt
 }
 
-make_bins <- function(
+makeBins <- function(
   allele, start_pos, end_pos, allele_length, bin_size=150) {
 
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
@@ -1187,7 +1216,7 @@ make_bins <- function(
   bin_dt
 }
 
-binning <- function(cov_dt, bin_dt) {
+bin_allele_cov <- function(cov_dt, bin_dt) {
   # make granges for allele coverage dt and bins
   tmp_gr <- GenomicRanges::makeGRangesFromDataFrame(
     cov_dt,
@@ -1201,8 +1230,135 @@ binning <- function(cov_dt, bin_dt) {
   cov_dt[S4Vectors::queryHits(ovl), "bin"] <- bin_dt[
     S4Vectors::subjectHits(ovl), "bin"
   ]
+  cov_dt[, ":="(
+    bin_t_dp = as.numeric(median(t_dp, na.rm=TRUE)),
+    bin_n_dp = as.numeric(median(n_dp, na.rm=TRUE)),
+    bin_multfactor = median(n_dp / t_dp, na.rm=TRUE)
+  ), by="bin"]
 
   cov_dt
+}
+
+estimate_logR <- function(cov_dt, multfactor) {
+  cov_dt[, logR := log2(t_dp / n_dp * multfactor)]
+  # FIXME: i can also use bin_t_dp and bin_n_dp calculate
+  # two should be similar
+  cov_dt[, bin_logR := median(logR, na.rm = TRUE), by = "bin"]
+  cov_dt
+}
+
+estimate_binned_logR <- function(a1_dt, a2_dt, multfactor){
+
+  bin_logR_dt <- merge(
+    unique(a1_dt, by="a1_bin"),
+    unique(a2_dt, by="a2_bin"),
+    by.x = c("a1_bin"), by.y = c("a2_bin"),
+    all.x = TRUE, all.y = TRUE
+  )
+  binned_names <- names(bin_logR_dt)[which(grepl("bin", names(bin_logR_dt)))]
+  bin_logR_dt <- bin_logR_dt[, ..binned_names]
+  bin_logR_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
+  bin_logR_dt[, logR_combined_bin := log2(
+    (a1_bin_t_dp + a2_bin_t_dp) /
+    (a1_bin_n_dp + a2_bin_n_dp) * multfactor
+  )]
+  bin_logR_dt
+
+}
+
+prep_mm_cov <- function(mm, a1_dt, a2_dt) {
+  mm_est_dt <- data.table(a1_pos = mm$diffSeq1, a2_pos = mm$diffSeq2)
+  mm_est_dt <- mm_est_dt[
+    a1_pos %in% a1_dt$a1_pos & a2_pos %in% a2_dt$a2_pos
+  ]
+  if (nrow(mm_est_dt) == 0) { return(NULL) }
+  simply_cols <- names(a1_dt)[which(! grepl("bin", names(a1_dt)))]
+  simply_cols <- c(simply_cols, "a1_bin")
+  mm_est_dt <- merge(
+    mm_est_dt, a1_dt[, ..simply_cols], by="a1_pos", all.x=TRUE
+  )
+  mm_est_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
+  if (nrow(mm_est_dt) == 0) { return(NULL) }
+  simply_cols <- names(a2_dt)[which(! grepl("bin", names(a2_dt)))]
+  mm_est_dt <- merge(
+    mm_est_dt, a2_dt[, ..simply_cols], by="a2_pos", all.x=TRUE
+  )
+  if (nrow(mm_est_dt) == 0) { return(NULL) }
+
+  mm_est_dt
+}
+
+estimate_baf <- function(mm_dt, bin_dt) {
+  mm_dt[, baf := a1_t_dp / (a1_t_dp + a2_t_dp)] # nolint
+  if (! "capture_bias_bin" %in% names(bin_dt)) {
+    print("[WARN] Found no column named capture_bias_bin in bin_dt")
+    print("[WARN] No capture bias will be corrected for BAF")
+    mm_dt[, baf_correct := baf]
+    return(mm_dt)
+  }
+  req_cols <- c("bin", "logR_combined_bin")
+  miss_cols <- req_cols[which(! req_cols %in% names(bin_dt))] 
+  if ( length(miss_cols) > 0 ) {
+    print(paste(
+      "[ERROR] Miss ",
+      paste(miss_cols, collapse=","),
+      " columns in bin_dt", sep = ""
+    ))
+    print("[ERROR] Cannot continue estimate BAF")
+    quit(status= 1)
+  }
+  mm_dt <- merge(
+    mm_dt,
+    bin_dt[, c("bin", "logR_combined_bin", "capture_bias_bin")],
+    by = "bin",
+    all.x=TRUE
+  )
+  mm_dt[, baf_correct := baf / capture_bias_bin]
+  mm_dt
+
+}
+
+estimate_cn <- function(mm_dt) {
+  mm_dt[, "a1_cn" :=
+    (purity - 1 + baf_correct * 2^(logR_combined_bin / gamma) * # nolint
+      ((1 - purity) * 2 + purity * ploidy)) / purity,
+  ]
+  mm_dt[, "a2_cn" :=
+    (purity - 1 - (baf_correct - 1) * 2^(logR_combined_bin / gamma) * # nolint
+      ((1 - purity) * 2 + purity * ploidy)) / purity,
+  ]
+  mm_dt[, ":="(
+    a1_bin_cn = median(a1_cn, na.rm = TRUE),
+    a2_bin_cn = median(a2_cn, na.rm = TRUE)
+  ),
+  by = "bin"
+  ]
+
+  bin_cn_dt <- unique(mm_dt, by = "bin")
+
+}
+
+estimate_cn_conf <- function(cn_dt, which) {
+  col <- NULL
+  print(which)
+  print(names(cn_dt))
+  pattern <- paste(which, "bin_cn", sep="_")
+  print(pattern)
+  col <- names(cn_dt)[which(grepl(pattern, names(cn_dt)))] 
+  if ( is.null(col) || length(col) == 0 ) {
+    print(paste(
+      "[ERROR] Failed to find cn column in cn_dt for ",
+      which, " allele", sep=""
+    ))
+    quit(status = 1)
+  }
+  print(col)
+  cn_test <- t_test_with_na(cn_dt[[col]])
+  cn_est_conf <- cn_test$conf.int
+  cn_est_lower <- cn_est_conf[1]
+  cn_est_upper <- cn_est_conf[2]
+  list(est_lower=cn_est_lower, est_upper=cn_est_upper)
+
 }
 
 gamma <- 1
@@ -1259,13 +1415,17 @@ print(ploidy)
 print(purity)
 
 print("[INFO] Counting sequencing depth from realigned normal BAM")
-n_seq_depth <- count_n_reads_from_bam(bam = args$nbam, tagfilter = list(NM=c(0)))
+# FIXME: tagfilter should be generated with args$min_necnt, rather than
+# hard-coded
+n_seq_depth <- count_n_reads_from_bam(bam = args$nbam, tagfilter=list(NM=c(0,1)))
 print("[INFO] Counting sequencing depth from realigned tumor BAM")
-t_seq_depth <- count_n_reads_from_bam(bam = args$tbam, tagfilter = list(NM=c(0)))
+t_seq_depth <- count_n_reads_from_bam(bam = args$tbam, tagfilter=list(NM=c(0,1)))
 if (t_seq_depth <= 0) {
   print("[ERROR] Found no alignments in the provided tumor BAM")
   quit(status = 1)
 }
+print(n_seq_depth)
+print(t_seq_depth)
 multfactor <- n_seq_depth / t_seq_depth
 print(paste("[INFO] Normal sequencing depth = ", n_seq_depth, sep=""))
 print(paste("[INFO] Tumor sequencing depth = ", t_seq_depth, sep=""))
@@ -1300,7 +1460,7 @@ alleles_dt[, apply(
   .SD, 1, call_hla_loh,
   tbam=filt_tbam, nbam=filt_nbam, hlaref=args$hlaref,
   outdir=args$outdir, purity=purity, ploidy=ploidy,
-  mulfactor=mulfactor, min_dp=args$min_cov, min_necnt=args$min_nm,
+  multfactor=multfactor, min_dp=args$min_cov, min_necnt=args$min_nm,
   tid=tid, nid=nid
 ), by="HLAGene"]
 
@@ -1332,7 +1492,7 @@ alleles_dt[, apply(
 #  res_dt <- call_hla_loh(
 #    alleles = hla_alleles, tbam = realign_tbam, nbam = realign_nbam,
 #    subj_hla_ref_fasta = subj_hla_ref_fasta, outdir = outdir,
-#    purity = purity, ploidy = ploidy, mulfactor = multfactor,
+#    purity = purity, ploidy = ploidy, multfactor = multfactor,
 #    min_dp = args$min_cov, min_necnt = args$min_nm,
 #    tid = tid, nid = nid, gamma = gamma
 #  )
