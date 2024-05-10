@@ -574,14 +574,7 @@ estimate_cn <- function(mm_dt) {
     (purity - 1 - (baf_correct - 1) * 2^(logR_combined_bin / gamma) * # nolint
       ((1 - purity) * 2 + purity * ploidy)) / purity,
   ]
-  mm_dt[, ":="(
-    a1_bin_cn = median(a1_cn, na.rm = TRUE),
-    a2_bin_cn = median(a2_cn, na.rm = TRUE)
-  ),
-  by = "bin"
-  ]
-
-  unique(mm_dt, by = "bin")
+  mm_dt
 }
 
 estimate_cn_conf <- function(cn_dt, which) {
@@ -602,10 +595,21 @@ estimate_cn_conf <- function(cn_dt, which) {
   list(est_lower=cn_est_lower, est_upper=cn_est_upper)
 }
 
+dump_intermedia_tables <- function(a1_dt, a2_dt, bin_dt, mm_dt, mm, out) {
+  to_save <- list(
+    mm = mm,
+    a1_cov_dt = a1_dt,
+    a2_cov_dt = a2_dt,
+    bin_dt = bin_dt,
+    mm_dt = mm_dt
+  )
+  saveRDS(to_save, out)
+}
+
 call_hla_loh <- function(
-    dt, tbam, nbam, hlaref, outdir,
-    purity, ploidy, multfactor, min_dp, min_necnt,
-    tid = "example_tumor", nid = "example_normal", gamma = 1) {
+  dt, tbam, nbam, hlaref, outdir,
+  purity, ploidy, multfactor, min_dp, min_necnt,
+  tid = "example_tumor", nid = "example_normal", gamma = 1) {
 
   a1 <- dt$A1
   a2 <- dt$A2
@@ -695,11 +699,11 @@ call_hla_loh <- function(
     .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
   ]
   bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  setkey(bin_logR_dt, bin)
   report$Num_Bins <- nrow(bin_logR_dt)
   report$Num_CN_Loss_Supporting_Bins <- nrow(
     bin_logR_dt[cn_loss_test_bin <= 0.01]
   )
-  print(bin_logR_dt)
 
   mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
   if (is.null(mm_dt)) {
@@ -708,12 +712,18 @@ call_hla_loh <- function(
     return(report)
   }
   mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_logR_dt)
-  print(mm_dt)
   report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
 
   print("[INFO] Estimate copy number at mismatch sites")
-  cn_dt <- estimate_cn(mm_dt = mm_dt)
-  print(cn_dt[, c("bin", "logR_combined_bin", "a1_bin_cn", "a2_bin_cn")])
+  mm_dt <- estimate_cn(mm_dt = mm_dt)
+  mm_dt[, ":="(
+    a1_bin_cn = median(a1_cn, na.rm = TRUE),
+    a2_bin_cn = median(a2_cn, na.rm = TRUE)
+  ),
+  by = "bin"
+  ]
+  cn_dt <- unique(mm_dt, by = "bin")
+  setkey(cn_dt, bin)
   report$HLA_A1_CN <- round(median(cn_dt$a1_bin_cn, na.rm = TRUE), 4)
   report$HLA_A2_CN <- round(median(cn_dt$a2_bin_cn, na.rm = TRUE), 4)
 
@@ -723,6 +733,13 @@ call_hla_loh <- function(
   cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a2")
   report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
   report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
+  bin_logR_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_logR_dt]
+  rm(cn_dt)
+
+  hla_gene <- gsub("(_|\\*)*(([0-9])+(_|:)*)+", "", a1)
+  hla_gene <- tolower(hla_gene)
+  out_rds <- file.path(outdir, paste(hla_gene, ".rds", sep=""))
+  dump_intermedia_tables(a1_cov_dt, a2_cov_dt, bin_logR_dt, mm_dt, mm, out_rds)
 
   report
 }
