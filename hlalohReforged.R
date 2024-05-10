@@ -83,27 +83,6 @@ test_cn_loss_using_log_odds_ratio <- function(x) {
   test$p.value
 }
 
-normalize_hla_seqname <- function(dt) {
-
-  if (! "seqnames" %in% names(dt)) {
-    print("[ERROR] Cannot find seqnames column in the given data table")
-    quit(status = 1)
-  }
-  dt[, seqnames := gsub("hla_", "", seqnames)]
-  dt[, hla_gene := unlist(strsplit(seqnames, "_"))[1], by=seq_len(nrow(dt))]
-  dt[, seqnames := gsub(
-    paste(hla_gene, "_", sep=""),
-    paste(toupper(hla_gene), "*", sep=""),
-    seqnames
-  ),
-    by = seq_len(nrow(dt))
-  ]
-  dt[, seqnames := gsub("_", ":", seqnames)]
-  dt[, hla_gene := NULL]
-
-  dt
-}
-
 parse_file_path <- function(file) {
   if (!file.exists(file)) {
     print(paste("[ERROR] Cannot find the file provided: ", file, sep = ""))
@@ -372,7 +351,7 @@ init_loh_report <- function(a1, a2) {
   )
 }
 
-get_allele_coverage <- function(allele, bam) {
+get_allele_coverage <- function(allele, bam, min_dp = 0) {
   print(paste(
     "[INFO] Get coverage for ", allele, " from ", bam, sep = ""
   ))
@@ -397,6 +376,7 @@ get_allele_coverage <- function(allele, bam) {
       file = bam, scanBamParam = scan_param, pileupParam = pileup_param
   ))
   # pileup return seqnames as factor
+  p_dt <- p_dt[count > min_dp]
   p_dt[, seqnames := as.character(seqnames)]
   p_dt[, which_label := NULL]
   p_dt
@@ -657,10 +637,8 @@ call_hla_loh <- function(
 
   t_a1_cov <- get_allele_coverage(allele = a1, bam = tbam)
   t_a2_cov <- get_allele_coverage(allele = a2, bam = tbam)
-  n_a1_cov <- get_allele_coverage(allele = a1, bam = nbam)
-  n_a2_cov <- get_allele_coverage(allele = a2, bam = nbam)
-  n_a1_cov <- n_a1_cov[count > min_dp]
-  n_a2_cov <- n_a2_cov[count > min_dp]
+  n_a1_cov <- get_allele_coverage(allele = a1, bam = nbam, min_dp = min_dp)
+  n_a2_cov <- get_allele_coverage(allele = a2, bam = nbam, min_dp = min_dp)
   t_a1_cov <- t_a1_cov[pos %in% n_a1_cov$pos]
   t_a2_cov <- t_a2_cov[pos %in% n_a2_cov$pos]
   if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
