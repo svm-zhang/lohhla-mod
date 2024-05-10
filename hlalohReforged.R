@@ -123,10 +123,22 @@ parse_dir_path <- function(dir, create) {
   }
 }
 
-get_read_group_from_bam <- function(bam) {
+extract_bam_header <- function(bam) {
   bf <- BamFile(bam)
+  scanBamHeader(bf) 
+}
 
-  rg <- scanBamHeader(bf)$text$`@RG`
+extract_seqinfo_from_bam_header <- function(bam) {
+  header <- extract_bam_header(bam = bam)
+  # a named integer vector 
+  targets <- header$targets
+  targets
+  #sort(names(targets))
+}
+
+extract_rg_from_bam_header <- function(bam) {
+  header <- extract_bam_header(bam = bam)
+  rg <- header$text$`@RG`
   if (is.null(rg) || is.na(rg)) {
     print(paste("[ERROR] Cannot find the read group (@RG) in the BAM file: ",
       bam,
@@ -137,7 +149,8 @@ get_read_group_from_bam <- function(bam) {
   rg
 }
 
-get_sm_from_rg <- function(rg) {
+extract_rgsm_from_bam_header <- function(bam) {
+  rg <- extract_rg_from_bam_header(bam = bam)
   sm <- rg[which(grepl("^SM", rg))]
   if (length(sm) == 0) {
     print(paste("[ERROR] Cannot find the SM in the @RG: ",
@@ -145,6 +158,11 @@ get_sm_from_rg <- function(rg) {
       sep = ""
     ))
     quit(status = 1)
+  }
+  if (length(sm) > 1) {
+    print("[INFO] Expect to extract only one read group in BAM")
+    print("[INFO] Only the first one will be extracted")
+    sm <- sm[1]
   }
   sm <- gsub("^SM:", "", sm)
   sm
@@ -253,157 +271,12 @@ get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
   mm
 }
 
-get_seqinfo_from_bam_header <- function(bam) {
-  bamf <- BamFile(file = bam)
-  bam_header <- scanBamHeader(bamf, what = "targets")
-  bam_header$targets
-}
-
-check_if_alleles_in_seqinfo <- function(alleles, bam) {
-  seqinfo <- get_seqinfo_from_bam_header(bam)
-  for (allele in alleles) {
-    if (!allele %in% names(seqinfo)) {
-      print(paste(
-        "[ERROR] ",
-        allele,
-        " is not in the sequence header of the provided BAM ",
-        bam,
-        sep = ""
-      ))
-      quit(status = 1)
-    }
-  }
-}
-
 get_indel_length <- function(cigar) {
   tmp <- unlist(strsplit(gsub("([0-9]+)", "~\\1~", cigar), "~"))
   ins <- grep(pattern = "I", x = tmp)
   del <- grep(pattern = "D", x = tmp)
   total <- sum(as.numeric(tmp[(ins - 1)])) + sum(as.numeric(tmp[del - 1]))
   total
-}
-
-call_hla_loh <- function(
-    dt, tbam, nbam, hlaref, outdir,
-    purity, ploidy, multfactor, min_dp, min_necnt,
-    tid = "example_tumor", nid = "example_normal", gamma = 1) {
-
-  a1 <- dt$A1
-  a2 <- dt$A2
-  alleles_str <- paste(c(a1, a2), collapse = " and ")
-  print(paste("[INFO] Analyze LOH for ", alleles_str, sep = ""))
-
-  report <- init_loh_report(a1, a2)
-
-  hla_seq <- read.fasta(hlaref)
-  a1_seq <- hla_seq[[a1]]
-  a2_seq <- hla_seq[[a2]]
-  print(paste(
-    "[INFO] Align sequences between ", alleles_str, sep = ""))
-  mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
-  report$Num_MM <- length(mm$diffSeq1)
-
-  if (length(mm$diffSeq1) == 0) {
-    print(paste(
-      "[INFO] there is no difference between the two alleles",
-      a1, a2,
-      sep = " "
-    ))
-    print("[INFO] no call will be made. Move to the next HLA gene")
-    return(report)
-  }
-
-  if (length(mm$diffSeq1) < 5) {
-    print("[INFO] HLA alleles are similar (less than 5 mismatch positions)")
-    print("[INFO] no call will be made. Move to the next HLA gene")
-    return(report)
-  }
-
-  print("[INFO] Make bins accounting for alignment start position")
-  a1_bin_dt <- makeBins(
-    allele = a1,
-    aln=mm$a1,
-    allele_length = length(a1_seq)
-  )
-  a2_bin_dt <- makeBins(
-    allele = a2,
-    aln=mm$a2,
-    allele_length = length(a2_seq)
-  )
-
-  t_a1_cov <- get_allele_coverage(allele = a1, bam = tbam)
-  t_a2_cov <- get_allele_coverage(allele = a2, bam = tbam)
-  n_a1_cov <- get_allele_coverage(allele = a1, bam = nbam)
-  n_a2_cov <- get_allele_coverage(allele = a2, bam = nbam)
-  n_a1_cov <- n_a1_cov[count > min_dp]
-  n_a2_cov <- n_a2_cov[count > min_dp]
-  t_a1_cov <- t_a1_cov[pos %in% n_a1_cov$pos]
-  t_a2_cov <- t_a2_cov[pos %in% n_a2_cov$pos]
-  if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
-    print("[INFO] Found no coverage for either allele in normal")
-    print("[INFO] Move to next HLA gene")
-    return(report)
-  }
-  print(paste(
-    "[INFO] Prepare coverage table for allele ", a1, sep = ""
-  ))
-  a1_cov_dt <- prep_allelic_cov(
-    t_dt=t_a1_cov, n_dt=n_a1_cov, bin_dt=a1_bin_dt, multfactor=multfactor
-  )
-  names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
-  print(paste(
-    "[INFO] Prepare coverage table for allele ", a2, sep = ""
-  ))
-  a2_cov_dt <- prep_allelic_cov(
-    t_dt=t_a2_cov, n_dt=n_a2_cov, bin_dt=a2_bin_dt, multfactor=multfactor
-  )
-  names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
-  report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
-  report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
-  report$HLA_A1_MM_Median_LogR <- median(
-    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR, na.rm = TRUE
-  )
-  report$HLA_A2_MM_Median_LogR <- median(
-    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR, na.rm = TRUE
-  )
-
-  bin_logR_dt <- estimate_binned_logR(
-    a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
-  )
-  bin_logR_dt[, cn_loss_test_bin := apply(
-    .SD, 1, test_cn_loss_using_log_odds_ratio
-    ),
-    .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
-  ]
-  bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
-  report$Num_Bins <- nrow(bin_logR_dt)
-  report$Num_CN_Loss_Supporting_Bins <- nrow(
-    bin_logR_dt[cn_loss_test_bin <= 0.01]
-  )
-
-  mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
-  if (is.null(mm_dt)) {
-    print("[INFO] No coverage info found for both alleles at mm sites")
-    print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
-    return(report)
-  }
-  mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_logR_dt)
-  report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
-
-  print("[INFO] Estimate copy number at mismatch sites")
-  cn_dt <- estimate_cn(mm_dt = mm_dt)
-  print(cn_dt[, c("bin", "logR_combined_bin", "a1_bin_cn", "a2_bin_cn")])
-  report$HLA_A1_CN <- round(median(cn_dt$a1_bin_cn, na.rm = TRUE), 4)
-  report$HLA_A2_CN <- round(median(cn_dt$a2_bin_cn, na.rm = TRUE), 4)
-
-  cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a1")
-  report$HLA_A1_CN_Lower <- round(cn_est_conf$est_lower, 4)
-  report$HLA_A1_CN_Upper <- round(cn_est_conf$est_upper, 4)
-  cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a2")
-  report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
-  report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
-
-  report
 }
 
 count_n_reads_from_bam <- function(
@@ -420,14 +293,6 @@ count_n_reads_from_bam <- function(
     tagFilter=tagfilter
   ))
   count_n_reads_df$records
-}
-
-get_alleles_from_bam <- function(bam) {
-  bf <- BamFile(bam)
-  # a named integer vector 
-  targets <- scanBamHeader(bf)$targets
-
-  sort(names(targets))
 }
 
 filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
@@ -510,7 +375,7 @@ get_allele_coverage <- function(allele, bam) {
   print(paste(
     "[INFO] Get coverage for ", allele, " from ", bam, sep = ""
   ))
-  seqinfo <- get_seqinfo_from_bam_header(bam = bam)
+  seqinfo <- extract_seqinfo_from_bam_header(bam = bam)
 
   allele_seq_ln <- seqinfo[which(names(seqinfo) == allele)]
   allele_to_scan <- GenomicRanges::GRanges(
@@ -737,6 +602,131 @@ estimate_cn_conf <- function(cn_dt, which) {
   list(est_lower=cn_est_lower, est_upper=cn_est_upper)
 }
 
+call_hla_loh <- function(
+    dt, tbam, nbam, hlaref, outdir,
+    purity, ploidy, multfactor, min_dp, min_necnt,
+    tid = "example_tumor", nid = "example_normal", gamma = 1) {
+
+  a1 <- dt$A1
+  a2 <- dt$A2
+  alleles_str <- paste(c(a1, a2), collapse = " and ")
+  print(paste("[INFO] Analyze LOH for ", alleles_str, sep = ""))
+
+  report <- init_loh_report(a1, a2)
+
+  hla_seq <- read.fasta(hlaref)
+  a1_seq <- hla_seq[[a1]]
+  a2_seq <- hla_seq[[a2]]
+  print(paste(
+    "[INFO] Align sequences between ", alleles_str, sep = ""))
+  mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
+  report$Num_MM <- length(mm$diffSeq1)
+
+  if (length(mm$diffSeq1) == 0) {
+    print(paste(
+      "[INFO] there is no difference between the two alleles",
+      a1, a2,
+      sep = " "
+    ))
+    print("[INFO] no call will be made. Move to the next HLA gene")
+    return(report)
+  }
+
+  if (length(mm$diffSeq1) < 5) {
+    print("[INFO] HLA alleles are similar (less than 5 mismatch positions)")
+    print("[INFO] no call will be made. Move to the next HLA gene")
+    return(report)
+  }
+
+  print("[INFO] Make bins accounting for alignment start position")
+  a1_bin_dt <- makeBins(
+    allele = a1,
+    aln=mm$a1,
+    allele_length = length(a1_seq)
+  )
+  a2_bin_dt <- makeBins(
+    allele = a2,
+    aln=mm$a2,
+    allele_length = length(a2_seq)
+  )
+
+  t_a1_cov <- get_allele_coverage(allele = a1, bam = tbam)
+  t_a2_cov <- get_allele_coverage(allele = a2, bam = tbam)
+  n_a1_cov <- get_allele_coverage(allele = a1, bam = nbam)
+  n_a2_cov <- get_allele_coverage(allele = a2, bam = nbam)
+  n_a1_cov <- n_a1_cov[count > min_dp]
+  n_a2_cov <- n_a2_cov[count > min_dp]
+  t_a1_cov <- t_a1_cov[pos %in% n_a1_cov$pos]
+  t_a2_cov <- t_a2_cov[pos %in% n_a2_cov$pos]
+  if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
+    print("[INFO] Found no coverage for either allele in normal")
+    print("[INFO] Move to next HLA gene")
+    return(report)
+  }
+  print(paste(
+    "[INFO] Prepare coverage table for allele ", a1, sep = ""
+  ))
+  a1_cov_dt <- prep_allelic_cov(
+    t_dt=t_a1_cov, n_dt=n_a1_cov, bin_dt=a1_bin_dt, multfactor=multfactor
+  )
+  names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
+  print(paste(
+    "[INFO] Prepare coverage table for allele ", a2, sep = ""
+  ))
+  a2_cov_dt <- prep_allelic_cov(
+    t_dt=t_a2_cov, n_dt=n_a2_cov, bin_dt=a2_bin_dt, multfactor=multfactor
+  )
+  names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
+  report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
+  report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
+  report$HLA_A1_MM_Median_LogR <- median(
+    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR, na.rm = TRUE
+  )
+  report$HLA_A2_MM_Median_LogR <- median(
+    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR, na.rm = TRUE
+  )
+
+  bin_logR_dt <- estimate_binned_logR(
+    a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
+  )
+  bin_logR_dt[, cn_loss_test_bin := apply(
+    .SD, 1, test_cn_loss_using_log_odds_ratio
+    ),
+    .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
+  ]
+  bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  report$Num_Bins <- nrow(bin_logR_dt)
+  report$Num_CN_Loss_Supporting_Bins <- nrow(
+    bin_logR_dt[cn_loss_test_bin <= 0.01]
+  )
+  print(bin_logR_dt)
+
+  mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
+  if (is.null(mm_dt)) {
+    print("[INFO] No coverage info found for both alleles at mm sites")
+    print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
+    return(report)
+  }
+  mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_logR_dt)
+  print(mm_dt)
+  report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
+
+  print("[INFO] Estimate copy number at mismatch sites")
+  cn_dt <- estimate_cn(mm_dt = mm_dt)
+  print(cn_dt[, c("bin", "logR_combined_bin", "a1_bin_cn", "a2_bin_cn")])
+  report$HLA_A1_CN <- round(median(cn_dt$a1_bin_cn, na.rm = TRUE), 4)
+  report$HLA_A2_CN <- round(median(cn_dt$a2_bin_cn, na.rm = TRUE), 4)
+
+  cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a1")
+  report$HLA_A1_CN_Lower <- round(cn_est_conf$est_lower, 4)
+  report$HLA_A1_CN_Upper <- round(cn_est_conf$est_upper, 4)
+  cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a2")
+  report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
+  report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
+
+  report
+}
+
 gamma <- 1
 bin_size <- 150
 
@@ -753,10 +743,8 @@ if (args$example) {
   tid <- "example_tumor"
   nid <- "example_normal"
 } else {
-  t_rg <- get_read_group_from_bam(bam = args$tbam)
-  tid <- get_sm_from_rg(rg = t_rg)
-  n_rg <- get_read_group_from_bam(bam = args$nbam)
-  nid <- get_sm_from_rg(rg = n_rg)
+  tid <- extract_rgsm_from_bam_header(bam = args$tbam)
+  nid <- extract_rgsm_from_bam_header(bam = args$nbam)
 }
 
 if (args$example) {
@@ -807,8 +795,12 @@ print(paste("[INFO] Normal sequencing depth = ", n_seq_depth, sep=""))
 print(paste("[INFO] Tumor sequencing depth = ", t_seq_depth, sep=""))
 print(paste("[INFO] Sequencing depth correcting factor = ", multfactor, sep=""))
 
-alleles_n <- get_alleles_from_bam(bam=args$nbam)
-alleles_t <- get_alleles_from_bam(bam=args$tbam)
+alleles_n <- extract_seqinfo_from_bam_header(bam=args$nbam)
+alleles_t <- extract_seqinfo_from_bam_header(bam=args$tbam)
+# extract function returns named integer vector
+# here we need names of that vector to get allele name
+alleles_n <- sort(names(alleles_n))
+alleles_t <- sort(names(alleles_t))
 if ( ! all.equal(alleles_n, alleles_t)) {
   print("[ERROR] Different set of alleles detected in normal and tumor BAMs")
   print("[ERROR] Alleles in normal BAM: ", paste(alleles_n, collapse="|"))
