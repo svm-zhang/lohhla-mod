@@ -31,7 +31,7 @@ parse_cmd <- function() {
     help = "Specify HLA reference sequence"
   )
   parser$add_argument("--tstates",
-    metavar = "FILE", type = "character", required = TRUE,
+    metavar = "FILE", type = "character",
     help = "Specify file includeing tumor purity and ploidy"
   )
   parser$add_argument("--outdir",
@@ -256,6 +256,28 @@ get_indel_length <- function(cigar) {
   del <- grep(pattern = "D", x = tmp)
   total <- sum(as.numeric(tmp[(ins - 1)])) + sum(as.numeric(tmp[del - 1]))
   total
+}
+
+extract_tstates <- function(tstate_est_file) {
+  print("[INFO] Getting estimates of ploidy and purity")
+  tstates_dt <- fread(tstate_est_file, drop = c(1))
+  if ( ! all(c("TumorPloidy", "TumorPurityNGS") %in% names(tstates_dt))) {
+    print(paste(
+      "[ERROR] Miss either purity, or ploidy, or both ",
+      "in the CNV model results",
+      sep = ""
+    ))
+    quit(status = 1)
+  }
+  # FIXME: when no data provided, assuming ploidy=2, purity=?
+  ploidy <- 
+  purity <- 
+
+  list(
+    ploidy = tstates_dt[["TumorPloidy"]],
+    purity = tstates_dt[["TumorPurityNGS"]]
+  )
+
 }
 
 count_n_reads_from_bam <- function(
@@ -751,30 +773,16 @@ if (args$example) {
   nid <- "example_normal"
 }
 
-print("[INFO] Getting estimates of ploidy and purity")
-tstates_dt <- fread(args$tstates, drop = c(1))
-#if (!all(c("ploidy", "purity") %in% names(tstates_dt))) {
-if (!all(c("TumorPloidy", "TumorPurityNGS") %in% names(tstates_dt))) {
-  print(paste(
-    "[ERROR] Miss either purity, or ploidy, or both ",
-    "in the CNV model results",
-    sep = ""
-  ))
-  quit(status = 1)
+purity <- 0.5
+ploidy <- 2
+if ( ! is.null(args$tstates) ) {
+  tstates <- extract_tstates(tstate_est_file = args$tstates)
+  if (! is.na(tstates$ploidy) && ! is.na(tstates$purity)) {
+    ploidy <- tstates$ploidy
+    purity <- tstates$purity
+  }
 }
-
-# FIXME: when no data provided, assuming ploidy=2, purity=?
-ploidy <- tstates_dt[["TumorPloidy"]]
-purity <- tstates_dt[["TumorPurityNGS"]]
-print("[INFO] Getting estimates of ploidy and purity [DONE]")
 print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
-if (is.na(ploidy) || is.na(purity)) {
-  print("[INFO] Ploidy and purity estimate are missing from CNV result")
-  print("[INFO] Terminate due to missing value to estimate HLA copy number")
-  quit(status = 0)
-}
-print(ploidy)
-print(purity)
 
 print("[INFO] Counting sequencing depth from realigned normal BAM")
 # FIXME: tagfilter should be generated with args$min_necnt, rather than
