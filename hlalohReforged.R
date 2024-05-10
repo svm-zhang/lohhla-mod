@@ -369,10 +369,12 @@ get_mm_bw_alleles <- function(alignment, chunksize = 60, returnlist = FALSE) {
   out <- list()
   out$diffSeq1 <- aln_dt$seq1_diff
   out$diffSeq2 <- aln_dt$seq2_diff
-  out$a1_aln_start <- a1_aln_start
-  out$a1_aln_end <- a1_aln_end
-  out$a2_aln_start <- a2_aln_start
-  out$a2_aln_end <- a2_aln_end
+  out$a1 <- list(start = a1_aln_start, end = a1_aln_end)
+  out$a2 <- list(start = a2_aln_start, end = a2_aln_end)
+  #out$a1_aln_start <- a1_aln_start
+  #out$a1_aln_end <- a1_aln_end
+  #out$a2_aln_start <- a2_aln_start
+  #out$a2_aln_end <- a2_aln_end
 
   out
 }
@@ -568,12 +570,12 @@ collate_tumor_and_normal_cov_per_allele <- function(
 #    purity, ploidy, multfactor, min_dp, min_necnt,
 #    tid = "example_tumor", nid = "example_normal", gamma = 1) {
 call_hla_loh <- function(
-    row, tbam, nbam, hlaref, outdir,
+    dt, tbam, nbam, hlaref, outdir,
     purity, ploidy, multfactor, min_dp, min_necnt,
     tid = "example_tumor", nid = "example_normal", gamma = 1) {
 
-  a1 <- row["A1"]
-  a2 <- row["A2"]
+  a1 <- dt$A1
+  a2 <- dt$A2
   alleles_str <- paste(c(a1, a2), collapse = " and ")
   print(paste("[INFO] Analyze LOH for ", alleles_str, sep = ""))
 
@@ -594,31 +596,24 @@ call_hla_loh <- function(
       sep = " "
     ))
     print("[INFO] no call will be made. Move to the next HLA gene")
-    return(data.table(t(report)))
+    return(report)
   }
 
   if (length(mm$diffSeq1) < 5) {
-    print("[WARN] HLA alleles are similar (less than 5 mismatch positions)")
-    print("[WARN] Keep that in mind when considering results")
+    print("[INFO] HLA alleles are similar (less than 5 mismatch positions)")
+    print("[INFO] no call will be made. Move to the next HLA gene")
+    return(report)
   }
 
-  print(paste(
-    "[INFO] Make bins for allele ", a1, sep = ""
-  ))
-  # FIXME: should simply pass mm variable, rework on getting mm
+  print("[INFO] Make bins accounting for alignment start position")
   a1_bin_dt <- makeBins(
     allele = a1,
-    start_pos = mm$a1_aln_start,
-    end_pos = mm$a1_aln_end,
+    aln=mm$a1,
     allele_length = length(a1_seq)
   )
-  print(paste(
-    "[INFO] Make bins for allele ", a1, sep = ""
-  ))
   a2_bin_dt <- makeBins(
     allele = a2,
-    start_pos = mm$a2_aln_start,
-    end_pos = mm$a2_aln_end,
+    aln=mm$a2,
     allele_length = length(a2_seq)
   )
 
@@ -633,25 +628,30 @@ call_hla_loh <- function(
   if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
     print("[INFO] Found no coverage for either allele in normal")
     print("[INFO] Move to next HLA gene")
-    return(data.table(t(report)))
+    return(report)
   }
   print(paste(
-    "[INFO] Combine coverage data table for allele ", a1, sep = ""
+    "[INFO] Prepare coverage table for allele ", a1, sep = ""
   ))
-  # FIXME: have a prep_allelic_cov function
-  a1_cov_dt <- combine_tn_cov(t_dt = t_a1_cov, n_dt = n_a1_cov)
-  a1_cov_dt <- bin_allele_cov(cov_dt = a1_cov_dt, bin_dt = a1_bin_dt)
-  a1_cov_dt <- estimate_logR(cov_dt = a1_cov_dt, multfactor = multfactor)
+  a1_cov_dt <- prep_allelic_cov(
+    t_dt=t_a1_cov, n_dt=n_a1_cov, bin_dt=a1_bin_dt, multfactor=multfactor
+  )
   names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
-  a2_cov_dt <- combine_tn_cov(t_dt = t_a2_cov, n_dt = n_a2_cov)
-  a2_cov_dt <- bin_allele_cov(cov_dt = a2_cov_dt, bin_dt = a2_bin_dt)
-  a2_cov_dt <- estimate_logR(cov_dt = a2_cov_dt, multfactor = multfactor)
-  names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
   print(paste(
-    "[INFO] Get median logR for ", alleles_str, sep = ""
+    "[INFO] Prepare coverage table for allele ", a2, sep = ""
   ))
+  a2_cov_dt <- prep_allelic_cov(
+    t_dt=t_a2_cov, n_dt=n_a2_cov, bin_dt=a2_bin_dt, multfactor=multfactor
+  )
+  names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
   report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
   report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
+  report$HLA_A1_MM_Median_LogR <- median(
+    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR, na.rm = TRUE
+  )
+  report$HLA_A2_MM_Median_LogR <- median(
+    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR, na.rm = TRUE
+  )
 
   bin_logR_dt <- estimate_binned_logR(
     a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
@@ -663,30 +663,33 @@ call_hla_loh <- function(
   ]
   bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
   report$Num_Bins <- nrow(bin_logR_dt)
+  report$Num_CN_Loss_Supporting_Bins <- nrow(
+    bin_logR_dt[cn_loss_test_bin <= 0.01]
+  )
 
-  mm_est_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
-  if (is.null(mm_est_dt)) {
+  mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
+  if (is.null(mm_dt)) {
     print("[INFO] No coverage info found for both alleles at mm sites")
     print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
-    return(data.table(t(report)))
+    return(report)
   }
-  mm_est_dt <- estimate_baf(mm_dt = mm_est_dt, bin_dt = bin_logR_dt)
+  mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_logR_dt)
+  report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
 
   print("[INFO] Estimate copy number at mismatch sites")
-  cn_dt <- estimate_cn(mm_dt = mm_est_dt)
-  #na_cn_est <- nb_cn_est <- NA
+  cn_dt <- estimate_cn(mm_dt = mm_dt)
   print(cn_dt[, c("bin", "logR_combined_bin", "a1_bin_cn", "a2_bin_cn")])
-  report$HLA_A1_CN <- median(cn_dt$a1_bin_cn, na.rm = TRUE)
-  report$HLA_A2_CN <- median(cn_dt$a2_bin_cn, na.rm = TRUE)
+  report$HLA_A1_CN <- round(median(cn_dt$a1_bin_cn, na.rm = TRUE), 4)
+  report$HLA_A2_CN <- round(median(cn_dt$a2_bin_cn, na.rm = TRUE), 4)
 
   cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a1")
-  report$HLA_A1_CN_Lower <- cn_est_conf$est_lower
-  report$HLA_A1_CN_Upper <- cn_est_conf$est_upper
+  report$HLA_A1_CN_Lower <- round(cn_est_conf$est_lower, 4)
+  report$HLA_A1_CN_Upper <- round(cn_est_conf$est_upper, 4)
   cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a2")
-  report$HLA_A2_CN_Lower <- cn_est_conf$est_lower
-  report$HLA_A2_CN_Upper <- cn_est_conf$est_upper
-  print(report)
-  stop()
+  report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
+  report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
+
+  report
 
   #print(paste(
   #  "[INFO] Get binned tumor and normal dp for ", alleles_str, sep = ""
@@ -1117,20 +1120,20 @@ init_loh_report <- function(a1, a2) {
   list(
     "HLA_A1" = a1,
     "HLA_A2" = a2,
-    "HLA_A1_CN" = NA,
-    "HLA_A1_CN_Lower" = NA,
-    "HLA_A1_CN_Upper" = NA,
-    "HLA_A2_CN" = NA,
-    "HLA_A2_CN_Lower" = NA,
-    "HLA_A2_CN_Upper" = NA,
-    "HLA_A1_Median_LogR" = NA,
-    "HLA_A2_Median_LogR" = NA,
-    "HLA_A1_MM_Median_LogR" = NA,
-    "HLA_A2_MM_Median_logR" = NA,
-    "Median_BAF" = NA,
-    "Num_MM" = 0,
-    "Num_Bins" = NA,
-    "Num_CN_Loss_Supporting_Bins" = NA
+    "HLA_A1_CN" = NaN,
+    "HLA_A1_CN_Lower" = NaN,
+    "HLA_A1_CN_Upper" = NaN,
+    "HLA_A2_CN" = NaN,
+    "HLA_A2_CN_Lower" = NaN,
+    "HLA_A2_CN_Upper" = NaN,
+    "HLA_A1_Median_LogR" = NaN,
+    "HLA_A2_Median_LogR" = NaN,
+    "HLA_A1_MM_Median_LogR" = NaN,
+    "HLA_A2_MM_Median_LogR" = NaN,
+    "Median_BAF" = NaN,
+    "Num_MM" = as.integer(0),
+    "Num_Bins" = as.integer(0),
+    "Num_CN_Loss_Supporting_Bins" = as.integer(0)
   )
 }
 
@@ -1158,11 +1161,20 @@ get_allele_coverage_new <- function(allele, bam) {
     pileup(
       file = bam, scanBamParam = scan_param, pileupParam = pileup_param
   ))
+  # pileup return seqnames as factor
+  p_dt[, seqnames := as.character(seqnames)]
   p_dt[, which_label := NULL]
   p_dt
 }
 
-combine_tn_cov <- function(t_dt, n_dt, multfactor) {
+prep_allelic_cov <- function(t_dt, n_dt, bin_dt, multfactor) {
+  cov_dt <- combine_tn_cov(t_dt = t_dt, n_dt = n_dt)
+  cov_dt <- bin_allele_cov(cov_dt = cov_dt, bin_dt = bin_dt)
+  cov_dt <- estimate_logR(cov_dt = cov_dt, multfactor = multfactor)
+  cov_dt
+}
+
+combine_tn_cov <- function(t_dt, n_dt) {
 
   a_t <- unique(t_dt$seqnames)
   a_n <- unique(n_dt$seqnames)
@@ -1184,8 +1196,10 @@ combine_tn_cov <- function(t_dt, n_dt, multfactor) {
 }
 
 makeBins <- function(
-  allele, start_pos, end_pos, allele_length, bin_size=150) {
+  allele, aln, allele_length, bin_size=150) {
 
+  start_pos <- aln$start
+  end_pos <- aln$end
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
   # the last bin can be less than 150, so merged with second last bin
   # end_pos + 2 was from original code
@@ -1235,7 +1249,6 @@ bin_allele_cov <- function(cov_dt, bin_dt) {
     bin_n_dp = as.numeric(median(n_dp, na.rm=TRUE)),
     bin_multfactor = median(n_dp / t_dp, na.rm=TRUE)
   ), by="bin"]
-
   cov_dt
 }
 
@@ -1334,16 +1347,12 @@ estimate_cn <- function(mm_dt) {
   by = "bin"
   ]
 
-  bin_cn_dt <- unique(mm_dt, by = "bin")
-
+  unique(mm_dt, by = "bin")
 }
 
 estimate_cn_conf <- function(cn_dt, which) {
   col <- NULL
-  print(which)
-  print(names(cn_dt))
   pattern <- paste(which, "bin_cn", sep="_")
-  print(pattern)
   col <- names(cn_dt)[which(grepl(pattern, names(cn_dt)))] 
   if ( is.null(col) || length(col) == 0 ) {
     print(paste(
@@ -1352,13 +1361,11 @@ estimate_cn_conf <- function(cn_dt, which) {
     ))
     quit(status = 1)
   }
-  print(col)
   cn_test <- t_test_with_na(cn_dt[[col]])
   cn_est_conf <- cn_test$conf.int
   cn_est_lower <- cn_est_conf[1]
   cn_est_upper <- cn_est_conf[2]
   list(est_lower=cn_est_lower, est_upper=cn_est_upper)
-
 }
 
 gamma <- 1
@@ -1456,13 +1463,14 @@ if ( ! file.exists(filt_nbam) || ! file.exists(filt_tbam)) {
   filter_bam_by_ecnt(bam = args$tbam, obam=filt_tbam, min_necnt = args$min_necnt)
 }
 
-alleles_dt[, apply(
-  .SD, 1, call_hla_loh,
+loh_res_dt <- alleles_dt[, call_hla_loh(
+  .SD,
   tbam=filt_tbam, nbam=filt_nbam, hlaref=args$hlaref,
   outdir=args$outdir, purity=purity, ploidy=ploidy,
   multfactor=multfactor, min_dp=args$min_cov, min_necnt=args$min_nm,
   tid=tid, nid=nid
 ), by="HLAGene"]
+print(loh_res_dt)
 
 #hla_genes <- unique(
 #  unlist(
