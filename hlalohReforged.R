@@ -364,6 +364,7 @@ init_loh_report <- function(a1, a2) {
     "HLA_A2_Median_LogR" = NaN,
     "HLA_A1_MM_Median_LogR" = NaN,
     "HLA_A2_MM_Median_LogR" = NaN,
+    "MM_LogR_Paired_Pvalue" = NaN,
     "Median_BAF" = NaN,
     "Num_MM" = as.integer(0),
     "Num_Bins" = as.integer(0),
@@ -712,6 +713,8 @@ call_hla_loh <- function(
     return(report)
   }
   mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_logR_dt)
+  paired_t_test <- t.test(mm_dt$a1_logR, mm_dt$a2_logR, paired = TRUE)
+  report$MM_LogR_Paired_Pvalue <- paired_t_test$p.value
   report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
 
   print("[INFO] Estimate copy number at mismatch sites")
