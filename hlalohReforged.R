@@ -467,8 +467,7 @@ bin_allele_cov <- function(cov_dt, bin_dt) {
   ]
   cov_dt[, ":="(
     bin_t_dp = as.numeric(median(t_dp, na.rm = TRUE)),
-    bin_n_dp = as.numeric(median(n_dp, na.rm = TRUE)),
-    bin_multfactor = median(n_dp / t_dp, na.rm = TRUE)
+    bin_n_dp = as.numeric(median(n_dp, na.rm = TRUE))
   ), by = "bin"]
   cov_dt
 }
@@ -587,11 +586,10 @@ estimate_cn_conf <- function(cn_dt, which) {
   list(est_lower = cn_est_lower, est_upper = cn_est_upper)
 }
 
-dump_intermedia_tables <- function(a1_dt, a2_dt, bin_dt, mm_dt, mm, out) {
+dump_intermedia_tables <- function(out, mm, cov_dt, bin_dt = NULL, mm_dt = NULL) {
   to_save <- list(
     mm = mm,
-    a1_cov_dt = a1_dt,
-    a2_cov_dt = a2_dt,
+    cov_dt = cov_dt,
     bin_dt = bin_dt,
     mm_dt = mm_dt
   )
@@ -738,7 +736,16 @@ call_hla_loh <- function(
   hla_gene <- gsub("(_|\\*)*(([0-9])+(_|:)*)+", "", a1)
   hla_gene <- tolower(hla_gene)
   out_rds <- file.path(outdir, paste(hla_gene, ".rds", sep = ""))
-  dump_intermedia_tables(a1_cov_dt, a2_cov_dt, bin_dt, mm_dt, mm, out_rds)
+  names(a1_cov_dt) <- gsub("a1_", "", names(a1_cov_dt))
+  names(a2_cov_dt) <- gsub("a2_", "", names(a2_cov_dt))
+  dump_intermedia_tables(
+    out = out_rds,
+    mm = mm,
+    cov_dt = rbind(a1_cov_dt, a2_cov_dt),
+    bin_dt = bin_dt,
+    mm_dt = mm_dt
+  )
+
 
   report
 }
