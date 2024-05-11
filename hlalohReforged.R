@@ -73,11 +73,11 @@ t_test_with_na <- function(x, alternative = "two.sided", mu = 0) {
   }
 }
 
-test_cn_loss_using_log_odds_ratio <- function(x) {
-  if(anyNA(x)) {
+test_cn_loss <- function(x) {
+  if (anyNA(x)) {
     return(NA)
   }
-  x <- matrix(round(x), nrow=2)
+  x <- matrix(round(x), nrow = 2)
   test <- fisher.test(x)
 
   test$p.value
@@ -104,15 +104,14 @@ parse_dir_path <- function(dir, create) {
 
 extract_bam_header <- function(bam) {
   bf <- BamFile(bam)
-  scanBamHeader(bf) 
+  scanBamHeader(bf)
 }
 
-extract_seqinfo_from_bam_header <- function(bam) {
+extract_seqinfo_from_bam <- function(bam) {
   header <- extract_bam_header(bam = bam)
-  # a named integer vector 
+  # a named integer vector
   targets <- header$targets
   targets
-  #sort(names(targets))
 }
 
 extract_rg_from_bam_header <- function(bam) {
@@ -226,10 +225,6 @@ get_mm_bw_alleles <- function(alignment, chunksize = 60, returnlist = FALSE) {
   out$diffSeq2 <- aln_dt$seq2_diff
   out$a1 <- list(start = a1_aln_start, end = a1_aln_end)
   out$a2 <- list(start = a2_aln_start, end = a2_aln_end)
-  #out$a1_aln_start <- a1_aln_start
-  #out$a1_aln_end <- a1_aln_end
-  #out$a2_aln_start <- a2_aln_start
-  #out$a2_aln_end <- a2_aln_end
 
   out
 }
@@ -261,7 +256,7 @@ get_indel_length <- function(cigar) {
 extract_tstates <- function(tstate_est_file) {
   print("[INFO] Getting estimates of ploidy and purity")
   tstates_dt <- fread(tstate_est_file, drop = c(1))
-  if ( ! all(c("TumorPloidy", "TumorPurityNGS") %in% names(tstates_dt))) {
+  if (!all(c("TumorPloidy", "TumorPurityNGS") %in% names(tstates_dt))) {
     print(paste(
       "[ERROR] Miss either purity, or ploidy, or both ",
       "in the CNV model results",
@@ -269,30 +264,26 @@ extract_tstates <- function(tstate_est_file) {
     ))
     quit(status = 1)
   }
-  # FIXME: when no data provided, assuming ploidy=2, purity=?
-  ploidy <- 
-  purity <- 
-
   list(
     ploidy = tstates_dt[["TumorPloidy"]],
     purity = tstates_dt[["TumorPurityNGS"]]
   )
-
 }
 
 count_n_reads_from_bam <- function(
-  bam, count_dup = FALSE, only_proper = TRUE, only_primary = TRUE,
-  tagfilter = list()
-) {
+    bam, count_dup = FALSE, only_proper = TRUE, only_primary = TRUE,
+    tagfilter = list()) {
   count_n_reads_df <- countBam(
     bam,
-    param = ScanBamParam(flag = scanBamFlag(
-      isDuplicate = count_dup,
-      isProperPair = only_proper,
-      isSecondaryAlignment = !only_primary
-    ),
-    tagFilter=tagfilter
-  ))
+    param = ScanBamParam(
+      flag = scanBamFlag(
+        isDuplicate = count_dup,
+        isProperPair = only_proper,
+        isSecondaryAlignment = !only_primary
+      ),
+      tagFilter = tagfilter
+    )
+  )
   count_n_reads_df$records
 }
 
@@ -313,15 +304,16 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
   )
   aln_dt[, read_idx := ifelse(
     bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
-    ),
-    by=seq_len(nrow(aln_dt))
+  ),
+  by = seq_len(nrow(aln_dt))
   ]
   if (nrow(aln_dt) == 0) {
     print(paste(
-      "[ERROR] Found no alignments in the give BAM: ", bam, sep = ""
+      "[ERROR] Found no alignments in the give BAM: ", bam,
+      sep = ""
     ))
     quit(status = 1)
-  } 
+  }
   cigar <- NULL # this is to avoid "no visible binding for cigar"
   n_ins <- n_del <- n_mm <- n_ecnt <- NULL
   nread_per_frag <- NULL
@@ -333,12 +325,6 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
       grep(pattern = "D", unlist(strsplit(cigar, "")))
     )
   ), by = seq_len(nrow(aln_dt))]
-  #aln_dt[, "n_ins" := length(
-  #  grep(pattern = "I", unlist(strsplit(cigar, "")))
-  #), by = seq_len(nrow(aln_dt))]
-  #aln_dt[, "n_del" := length(
-  #  grep(pattern = "D", unlist(strsplit(cigar, "")))
-  #), by = seq_len(nrow(aln_dt))]
   aln_dt[, "n_mm" := nm - apply(.SD, 1, get_indel_length), .SDcols = "cigar"]
   aln_dt[, "n_ecnt" := n_mm + n_ins + n_del]
   aln_dt <- aln_dt[n_ecnt <= min_necnt]
@@ -348,7 +334,6 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
     list(function(x) x$qname %in% aln_dt$qname)
   )
   obam <- filterBam(bamf, obam, filter = filter, param = scan_param)
-
 }
 
 init_loh_report <- function(a1, a2) {
@@ -375,9 +360,10 @@ init_loh_report <- function(a1, a2) {
 
 get_allele_coverage <- function(allele, bam, min_dp = 0) {
   print(paste(
-    "[INFO] Get coverage for ", allele, " from ", bam, sep = ""
+    "[INFO] Get coverage for ", allele, " from ", bam,
+    sep = ""
   ))
-  seqinfo <- extract_seqinfo_from_bam_header(bam = bam)
+  seqinfo <- extract_seqinfo_from_bam(bam = bam)
 
   allele_seq_ln <- seqinfo[which(names(seqinfo) == allele)]
   allele_to_scan <- GenomicRanges::GRanges(
@@ -390,13 +376,14 @@ get_allele_coverage <- function(allele, bam, min_dp = 0) {
     what = c("qname", "flag"),
     which = allele_to_scan,
   )
-  pileup_param = PileupParam(
+  pileup_param <- PileupParam(
     min_mapq = 20, distinguish_strands = FALSE
   )
   p_dt <- setDT(
     pileup(
       file = bam, scanBamParam = scan_param, pileupParam = pileup_param
-  ))
+    )
+  )
   # pileup return seqnames as factor
   p_dt <- p_dt[count > min_dp]
   p_dt[, seqnames := as.character(seqnames)]
@@ -407,19 +394,18 @@ get_allele_coverage <- function(allele, bam, min_dp = 0) {
 prep_allelic_cov <- function(t_dt, n_dt, bin_dt, multfactor) {
   cov_dt <- combine_tn_cov(t_dt = t_dt, n_dt = n_dt)
   cov_dt <- bin_allele_cov(cov_dt = cov_dt, bin_dt = bin_dt)
-  cov_dt <- estimate_logR(cov_dt = cov_dt, multfactor = multfactor)
+  cov_dt <- estimate_logr(cov_dt = cov_dt, multfactor = multfactor)
   cov_dt
 }
 
 combine_tn_cov <- function(t_dt, n_dt) {
-
   a_t <- unique(t_dt$seqnames)
   a_n <- unique(n_dt$seqnames)
-  if ( length(a_t) != 1 || length(a_n) != 1 ) {
+  if (length(a_t) != 1 || length(a_n) != 1) {
     print("[ERROR] Only one seqname is expected in tumor and normal tables")
     quit(status = 1)
   }
-  if ( a_t != a_n ) {
+  if (a_t != a_n) {
     print("[ERROR] To be combined tumor and normal tables have diff seqnames")
     quit(status = 1)
   }
@@ -432,9 +418,7 @@ combine_tn_cov <- function(t_dt, n_dt) {
   allele_cov_dt
 }
 
-makeBins <- function(
-  allele, aln, allele_length, bin_size=150) {
-
+make_bins <- function(allele, aln, allele_length, bin_size = 150) {
   start_pos <- aln$start
   end_pos <- aln$end
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
@@ -456,11 +440,11 @@ makeBins <- function(
   if (allele_length > max(iends)) {
     istarts <- c(istarts, max(iends) + 1)
     iends <- c(iends, allele_length)
-    indices <- c(indices, allele_length+1)
+    indices <- c(indices, allele_length + 1)
   }
 
   bin_dt <- data.table(
-    seqnames=allele, start = istarts, end = iends, bin = indices
+    seqnames = allele, start = istarts, end = iends, bin = indices
   )
   bin_dt[, end := ifelse(end > allele_length, allele_length, end)]
 
@@ -482,14 +466,14 @@ bin_allele_cov <- function(cov_dt, bin_dt) {
     S4Vectors::subjectHits(ovl), "bin"
   ]
   cov_dt[, ":="(
-    bin_t_dp = as.numeric(median(t_dp, na.rm=TRUE)),
-    bin_n_dp = as.numeric(median(n_dp, na.rm=TRUE)),
-    bin_multfactor = median(n_dp / t_dp, na.rm=TRUE)
-  ), by="bin"]
+    bin_t_dp = as.numeric(median(t_dp, na.rm = TRUE)),
+    bin_n_dp = as.numeric(median(n_dp, na.rm = TRUE)),
+    bin_multfactor = median(n_dp / t_dp, na.rm = TRUE)
+  ), by = "bin"]
   cov_dt
 }
 
-estimate_logR <- function(cov_dt, multfactor) {
+estimate_logr <- function(cov_dt, multfactor) {
   cov_dt[, logR := log2(t_dp / n_dp * multfactor)]
   # FIXME: i can also use bin_t_dp and bin_n_dp calculate
   # two should be similar
@@ -497,23 +481,21 @@ estimate_logR <- function(cov_dt, multfactor) {
   cov_dt
 }
 
-estimate_binned_logR <- function(a1_dt, a2_dt, multfactor){
-
-  bin_logR_dt <- merge(
-    unique(a1_dt, by="a1_bin"),
-    unique(a2_dt, by="a2_bin"),
+estimate_binned_logr <- function(a1_dt, a2_dt, multfactor) {
+  bin_dt <- merge(
+    unique(a1_dt, by = "a1_bin"),
+    unique(a2_dt, by = "a2_bin"),
     by.x = c("a1_bin"), by.y = c("a2_bin"),
     all.x = TRUE, all.y = TRUE
   )
-  binned_names <- names(bin_logR_dt)[which(grepl("bin", names(bin_logR_dt)))]
-  bin_logR_dt <- bin_logR_dt[, ..binned_names]
-  bin_logR_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
-  bin_logR_dt[, logR_combined_bin := log2(
+  binned_names <- names(bin_dt)[which(grepl("bin", names(bin_dt)))]
+  bin_dt <- bin_dt[, ..binned_names]
+  bin_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
+  bin_dt[, logR_combined_bin := log2(
     (a1_bin_t_dp + a2_bin_t_dp) /
-    (a1_bin_n_dp + a2_bin_n_dp) * multfactor
+      (a1_bin_n_dp + a2_bin_n_dp) * multfactor
   )]
-  bin_logR_dt
-
+  bin_dt
 }
 
 prep_mm_cov <- function(mm, a1_dt, a2_dt) {
@@ -521,73 +503,80 @@ prep_mm_cov <- function(mm, a1_dt, a2_dt) {
   mm_est_dt <- mm_est_dt[
     a1_pos %in% a1_dt$a1_pos & a2_pos %in% a2_dt$a2_pos
   ]
-  if (nrow(mm_est_dt) == 0) { return(NULL) }
-  simply_cols <- names(a1_dt)[which(! grepl("bin", names(a1_dt)))]
+  if (nrow(mm_est_dt) == 0) {
+    return(NULL)
+  }
+  simply_cols <- names(a1_dt)[which(!grepl("bin", names(a1_dt)))]
   simply_cols <- c(simply_cols, "a1_bin")
   mm_est_dt <- merge(
-    mm_est_dt, a1_dt[, ..simply_cols], by="a1_pos", all.x=TRUE
+    mm_est_dt, a1_dt[, ..simply_cols],
+    by = "a1_pos", all.x = TRUE
   )
   mm_est_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
-  if (nrow(mm_est_dt) == 0) { return(NULL) }
-  simply_cols <- names(a2_dt)[which(! grepl("bin", names(a2_dt)))]
+  if (nrow(mm_est_dt) == 0) {
+    return(NULL)
+  }
+  simply_cols <- names(a2_dt)[which(!grepl("bin", names(a2_dt)))]
   mm_est_dt <- merge(
-    mm_est_dt, a2_dt[, ..simply_cols], by="a2_pos", all.x=TRUE
+    mm_est_dt, a2_dt[, ..simply_cols],
+    by = "a2_pos", all.x = TRUE
   )
-  if (nrow(mm_est_dt) == 0) { return(NULL) }
+  if (nrow(mm_est_dt) == 0) {
+    return(NULL)
+  }
 
   mm_est_dt
 }
 
 estimate_baf <- function(mm_dt, bin_dt) {
   mm_dt[, baf := a1_t_dp / (a1_t_dp + a2_t_dp)] # nolint
-  if (! "capture_bias_bin" %in% names(bin_dt)) {
+  if (!"capture_bias_bin" %in% names(bin_dt)) {
     print("[WARN] Found no column named capture_bias_bin in bin_dt")
     print("[WARN] No capture bias will be corrected for BAF")
     mm_dt[, baf_correct := baf]
     return(mm_dt)
   }
   req_cols <- c("bin", "logR_combined_bin")
-  miss_cols <- req_cols[which(! req_cols %in% names(bin_dt))] 
-  if ( length(miss_cols) > 0 ) {
+  miss_cols <- req_cols[which(!req_cols %in% names(bin_dt))]
+  if (length(miss_cols) > 0) {
     print(paste(
       "[ERROR] Miss ",
-      paste(miss_cols, collapse=","),
-      " columns in bin_dt", sep = ""
+      paste(miss_cols, collapse = ","),
+      " columns in bin_dt",
+      sep = ""
     ))
     print("[ERROR] Cannot continue estimate BAF")
-    quit(status= 1)
+    quit(status = 1)
   }
   mm_dt <- merge(
     mm_dt,
     bin_dt[, c("bin", "logR_combined_bin", "capture_bias_bin")],
     by = "bin",
-    all.x=TRUE
+    all.x = TRUE
   )
   mm_dt[, baf_correct := baf / capture_bias_bin]
   mm_dt
-
 }
 
 estimate_cn <- function(mm_dt) {
   mm_dt[, "a1_cn" :=
     (purity - 1 + baf_correct * 2^(logR_combined_bin / gamma) * # nolint
-      ((1 - purity) * 2 + purity * ploidy)) / purity,
-  ]
+      ((1 - purity) * 2 + purity * ploidy)) / purity, ]
   mm_dt[, "a2_cn" :=
     (purity - 1 - (baf_correct - 1) * 2^(logR_combined_bin / gamma) * # nolint
-      ((1 - purity) * 2 + purity * ploidy)) / purity,
-  ]
+      ((1 - purity) * 2 + purity * ploidy)) / purity, ]
   mm_dt
 }
 
 estimate_cn_conf <- function(cn_dt, which) {
   col <- NULL
-  pattern <- paste(which, "bin_cn", sep="_")
-  col <- names(cn_dt)[which(grepl(pattern, names(cn_dt)))] 
-  if ( is.null(col) || length(col) == 0 ) {
+  pattern <- paste(which, "bin_cn", sep = "_")
+  col <- names(cn_dt)[which(grepl(pattern, names(cn_dt)))]
+  if (is.null(col) || length(col) == 0) {
     print(paste(
       "[ERROR] Failed to find cn column in cn_dt for ",
-      which, " allele", sep=""
+      which, " allele",
+      sep = ""
     ))
     quit(status = 1)
   }
@@ -595,7 +584,7 @@ estimate_cn_conf <- function(cn_dt, which) {
   cn_est_conf <- cn_test$conf.int
   cn_est_lower <- cn_est_conf[1]
   cn_est_upper <- cn_est_conf[2]
-  list(est_lower=cn_est_lower, est_upper=cn_est_upper)
+  list(est_lower = cn_est_lower, est_upper = cn_est_upper)
 }
 
 dump_intermedia_tables <- function(a1_dt, a2_dt, bin_dt, mm_dt, mm, out) {
@@ -610,10 +599,9 @@ dump_intermedia_tables <- function(a1_dt, a2_dt, bin_dt, mm_dt, mm, out) {
 }
 
 call_hla_loh <- function(
-  dt, tbam, nbam, hlaref, outdir,
-  purity, ploidy, multfactor, min_dp, min_necnt,
-  tid = "example_tumor", nid = "example_normal", gamma = 1) {
-
+    dt, tbam, nbam, hlaref, outdir,
+    purity, ploidy, multfactor, min_dp, min_necnt,
+    tid = "example_tumor", nid = "example_normal", gamma = 1) {
   a1 <- dt$A1
   a2 <- dt$A2
   alleles_str <- paste(c(a1, a2), collapse = " and ")
@@ -625,7 +613,9 @@ call_hla_loh <- function(
   a1_seq <- hla_seq[[a1]]
   a2_seq <- hla_seq[[a2]]
   print(paste(
-    "[INFO] Align sequences between ", alleles_str, sep = ""))
+    "[INFO] Align sequences between ", alleles_str,
+    sep = ""
+  ))
   mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
   report$Num_MM <- length(mm$diffSeq1)
 
@@ -646,14 +636,14 @@ call_hla_loh <- function(
   }
 
   print("[INFO] Make bins accounting for alignment start position")
-  a1_bin_dt <- makeBins(
+  a1_bin_dt <- make_bins(
     allele = a1,
-    aln=mm$a1,
+    aln = mm$a1,
     allele_length = length(a1_seq)
   )
-  a2_bin_dt <- makeBins(
+  a2_bin_dt <- make_bins(
     allele = a2,
-    aln=mm$a2,
+    aln = mm$a2,
     allele_length = length(a2_seq)
   )
 
@@ -669,41 +659,47 @@ call_hla_loh <- function(
     return(report)
   }
   print(paste(
-    "[INFO] Prepare coverage table for allele ", a1, sep = ""
+    "[INFO] Prepare coverage table for allele ", a1,
+    sep = ""
   ))
   a1_cov_dt <- prep_allelic_cov(
-    t_dt=t_a1_cov, n_dt=n_a1_cov, bin_dt=a1_bin_dt, multfactor=multfactor
+    t_dt = t_a1_cov, n_dt = n_a1_cov,
+    bin_dt = a1_bin_dt, multfactor = multfactor
   )
   names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
   print(paste(
-    "[INFO] Prepare coverage table for allele ", a2, sep = ""
+    "[INFO] Prepare coverage table for allele ", a2,
+    sep = ""
   ))
   a2_cov_dt <- prep_allelic_cov(
-    t_dt=t_a2_cov, n_dt=n_a2_cov, bin_dt=a2_bin_dt, multfactor=multfactor
+    t_dt = t_a2_cov, n_dt = n_a2_cov,
+    bin_dt = a2_bin_dt, multfactor = multfactor
   )
   names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
   report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
   report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
   report$HLA_A1_MM_Median_LogR <- median(
-    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR, na.rm = TRUE
+    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR,
+    na.rm = TRUE
   )
   report$HLA_A2_MM_Median_LogR <- median(
-    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR, na.rm = TRUE
+    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR,
+    na.rm = TRUE
   )
 
-  bin_logR_dt <- estimate_binned_logR(
+  bin_dt <- estimate_binned_logr(
     a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
   )
-  bin_logR_dt[, cn_loss_test_bin := apply(
-    .SD, 1, test_cn_loss_using_log_odds_ratio
-    ),
-    .SDcols=c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
+  bin_dt[, cn_loss_test_bin := apply(
+    .SD, 1, test_cn_loss
+  ),
+  .SDcols = c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
   ]
-  bin_logR_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
-  setkey(bin_logR_dt, bin)
-  report$Num_Bins <- nrow(bin_logR_dt)
+  bin_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  setkey(bin_dt, bin)
+  report$Num_Bins <- nrow(bin_dt)
   report$Num_CN_Loss_Supporting_Bins <- nrow(
-    bin_logR_dt[cn_loss_test_bin <= 0.01]
+    bin_dt[cn_loss_test_bin <= 0.01]
   )
 
   mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
@@ -712,7 +708,7 @@ call_hla_loh <- function(
     print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
     return(report)
   }
-  mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_logR_dt)
+  mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_dt)
   paired_t_test <- t.test(mm_dt$a1_logR, mm_dt$a2_logR, paired = TRUE)
   report$MM_LogR_Paired_Pvalue <- paired_t_test$p.value
   report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
@@ -736,13 +732,13 @@ call_hla_loh <- function(
   cn_est_conf <- estimate_cn_conf(cn_dt = cn_dt, which = "a2")
   report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
   report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
-  bin_logR_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_logR_dt]
+  bin_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_dt]
   rm(cn_dt)
 
   hla_gene <- gsub("(_|\\*)*(([0-9])+(_|:)*)+", "", a1)
   hla_gene <- tolower(hla_gene)
-  out_rds <- file.path(outdir, paste(hla_gene, ".rds", sep=""))
-  dump_intermedia_tables(a1_cov_dt, a2_cov_dt, bin_logR_dt, mm_dt, mm, out_rds)
+  out_rds <- file.path(outdir, paste(hla_gene, ".rds", sep = ""))
+  dump_intermedia_tables(a1_cov_dt, a2_cov_dt, bin_dt, mm_dt, mm, out_rds)
 
   report
 }
@@ -775,9 +771,9 @@ if (args$example) {
 
 purity <- 0.5
 ploidy <- 2
-if ( ! is.null(args$tstates) ) {
+if (!is.null(args$tstates)) {
   tstates <- extract_tstates(tstate_est_file = args$tstates)
-  if (! is.na(tstates$ploidy) && ! is.na(tstates$purity)) {
+  if (!is.na(tstates$ploidy) && !is.na(tstates$purity)) {
     ploidy <- tstates$ploidy
     purity <- tstates$purity
   }
@@ -787,9 +783,13 @@ print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
 print("[INFO] Counting sequencing depth from realigned normal BAM")
 # FIXME: tagfilter should be generated with args$min_necnt, rather than
 # hard-coded
-n_seq_depth <- count_n_reads_from_bam(bam = args$nbam, tagfilter=list(NM=c(0,1)))
+n_seq_depth <- count_n_reads_from_bam(
+  bam = args$nbam, tagfilter = list(NM = c(0, 1))
+)
 print("[INFO] Counting sequencing depth from realigned tumor BAM")
-t_seq_depth <- count_n_reads_from_bam(bam = args$tbam, tagfilter=list(NM=c(0,1)))
+t_seq_depth <- count_n_reads_from_bam(
+  bam = args$tbam, tagfilter = list(NM = c(0, 1))
+)
 if (t_seq_depth <= 0) {
   print("[ERROR] Found no alignments in the provided tumor BAM")
   quit(status = 1)
@@ -797,45 +797,52 @@ if (t_seq_depth <= 0) {
 print(n_seq_depth)
 print(t_seq_depth)
 multfactor <- n_seq_depth / t_seq_depth
-print(paste("[INFO] Normal sequencing depth = ", n_seq_depth, sep=""))
-print(paste("[INFO] Tumor sequencing depth = ", t_seq_depth, sep=""))
-print(paste("[INFO] Sequencing depth correcting factor = ", multfactor, sep=""))
+print(paste("[INFO] Normal sequencing depth = ", n_seq_depth, sep = ""))
+print(paste("[INFO] Tumor sequencing depth = ", t_seq_depth, sep = ""))
+print(paste(
+  "[INFO] Sequencing depth correcting factor = ", multfactor,
+  sep = ""
+))
 
-alleles_n <- extract_seqinfo_from_bam_header(bam=args$nbam)
-alleles_t <- extract_seqinfo_from_bam_header(bam=args$tbam)
+alleles_n <- extract_seqinfo_from_bam(bam = args$nbam)
+alleles_t <- extract_seqinfo_from_bam(bam = args$tbam)
 # extract function returns named integer vector
 # here we need names of that vector to get allele name
 alleles_n <- sort(names(alleles_n))
 alleles_t <- sort(names(alleles_t))
-if ( ! all.equal(alleles_n, alleles_t)) {
+if (!all.equal(alleles_n, alleles_t)) {
   print("[ERROR] Different set of alleles detected in normal and tumor BAMs")
-  print("[ERROR] Alleles in normal BAM: ", paste(alleles_n, collapse="|"))
-  print("[ERROR] Alleles in tumor BAM: ", paste(alleles_t, collapse="|"))
+  print("[ERROR] Alleles in normal BAM: ", paste(alleles_n, collapse = "|"))
+  print("[ERROR] Alleles in tumor BAM: ", paste(alleles_t, collapse = "|"))
   quit(status = 1)
 }
 
 alleles_dt <- data.table(Alleles = alleles_n)
-alleles_dt[, HLAGene := tstrsplit(Alleles, "_", keep=2)]
-alleles_dt[, HLAGene := paste("hla_", HLAGene, sep="")]
-alleles_dt[, Alleles := paste(Alleles, collapse=","), by=HLAGene]
-alleles_dt[, c("A1", "A2") := tstrsplit(Alleles, ","), by=HLAGene]
+alleles_dt[, HLAGene := tstrsplit(Alleles, "_", keep = 2)]
+alleles_dt[, HLAGene := paste("hla_", HLAGene, sep = "")]
+alleles_dt[, Alleles := paste(Alleles, collapse = ","), by = HLAGene]
+alleles_dt[, c("A1", "A2") := tstrsplit(Alleles, ","), by = HLAGene]
 alleles_dt[, Alleles := NULL]
-alleles_dt <- unique(alleles_dt, by="HLAGene")
+alleles_dt <- unique(alleles_dt, by = "HLAGene")
 
 # filter input bams by ecnt
-filt_nbam = file.path(args$outdir, paste(nid, ".filt.bam", sep=""))
-filt_tbam = file.path(args$outdir, paste(tid, ".filt.bam", sep=""))
-if ( ! file.exists(filt_nbam) || ! file.exists(filt_tbam)) {
-  filter_bam_by_ecnt(bam = args$nbam, obam=filt_nbam, min_necnt = args$min_necnt)
-  filter_bam_by_ecnt(bam = args$tbam, obam=filt_tbam, min_necnt = args$min_necnt)
+filt_nbam <- file.path(args$outdir, paste(nid, ".filt.bam", sep = ""))
+filt_tbam <- file.path(args$outdir, paste(tid, ".filt.bam", sep = ""))
+if (!file.exists(filt_nbam) || !file.exists(filt_tbam)) {
+  filter_bam_by_ecnt(
+    bam = args$nbam, obam = filt_nbam, min_necnt = args$min_necnt
+  )
+  filter_bam_by_ecnt(
+    bam = args$tbam, obam = filt_tbam, min_necnt = args$min_necnt
+  )
 }
 
 loh_res_dt <- alleles_dt[, call_hla_loh(
   .SD,
-  tbam=filt_tbam, nbam=filt_nbam, hlaref=args$hlaref,
-  outdir=args$outdir, purity=purity, ploidy=ploidy,
-  multfactor=multfactor, min_dp=args$min_cov, min_necnt=args$min_nm,
-  tid=tid, nid=nid
-), by="HLAGene"]
-out_res <- file.path(args$outdir, paste(tid, ".loh.res.tsv", sep=""))
-fwrite(loh_res_dt, out_res, sep="\t", row.names=FALSE, quote=FALSE)
+  tbam = filt_tbam, nbam = filt_nbam, hlaref = args$hlaref,
+  outdir = args$outdir, purity = purity, ploidy = ploidy,
+  multfactor = multfactor, min_dp = args$min_cov, min_necnt = args$min_nm,
+  tid = tid, nid = nid
+), by = "HLAGene"]
+out_res <- file.path(args$outdir, paste(tid, ".loh.res.tsv", sep = ""))
+fwrite(loh_res_dt, out_res, sep = "\t", row.names = FALSE, quote = FALSE)
