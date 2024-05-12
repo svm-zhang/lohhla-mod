@@ -271,27 +271,38 @@ extract_tstates <- function(tstate_est_file) {
 }
 
 count_n_reads_from_bam <- function(
-    bam, count_dup = FALSE, only_proper = TRUE, only_primary = TRUE,
-    tagfilter = list()) {
+    bam, which, tagfilter = list()) {
+  seqinfo <- extract_seqinfo_from_bam(bam = bam)
+  allele_seq_ln <- seqinfo[which(names(seqinfo) %in% which)]
+  dt <- data.table(seqnames = names(allele_seq_ln), end = allele_seq_ln)
+  dt[, start := 1]
+  allele_to_scan <- GenomicRanges::makeGRangesFromDataFrame(dt)
   count_n_reads_df <- countBam(
     bam,
     param = ScanBamParam(
+      which = allele_to_scan,
       flag = scanBamFlag(
-        isDuplicate = count_dup,
-        isProperPair = only_proper,
-        isSecondaryAlignment = !only_primary
+        isDuplicate = FALSE,
+        isProperPair = TRUE,
+        isNotPassingQualityControls = FALSE,
+        isSupplementaryAlignment = FALSE,
+        isSecondaryAlignment = FALSE
       ),
       tagFilter = tagfilter
     )
   )
-  count_n_reads_df$records
+  sum(count_n_reads_df$records)
 }
 
 filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
   bamf <- BamFile(file = bam)
 
+  scanflag <- scanBamFlag(
+    isProperPair = TRUE, isSecondaryAlignment = FALSE, isDuplicate = FALSE,
+    isNotPassingQualityControls = FALSE, isSupplementaryAlignment = FALSE
+  )
   scan_param <- ScanBamParam(
-    flag = scanBamFlag(),
+    flag = scanflag,
     what = c("qname", "flag", "cigar"),
     tag = "NM"
   )
@@ -358,26 +369,44 @@ init_loh_report <- function(a1, a2) {
   )
 }
 
+extract_allele_coverage <- function(allele, bam, hlaref, min_dp = 0) {
+  dt <- fread(text = system2(
+    command = "samtools",
+    args = c(
+      "mpileup", "-f", hlaref,
+      "--rf", 2, "-q", 20, "-Q", 20, "-r", allele, bam
+    ),
+    stdout = TRUE,
+    stderr = FALSE,
+    wait = TRUE
+  ), select = c(1, 2, 3, 4))
+  names(dt) <- c("seqnames", "pos", "nucleotide", "count")
+  dt <- dt[count > min_dp]
+  dt
+}
+
 get_allele_coverage <- function(allele, bam, min_dp = 0) {
   print(paste(
     "[INFO] Get coverage for ", allele, " from ", bam,
     sep = ""
   ))
   seqinfo <- extract_seqinfo_from_bam(bam = bam)
-
   allele_seq_ln <- seqinfo[which(names(seqinfo) == allele)]
   allele_to_scan <- GenomicRanges::GRanges(
     seqnames = allele,
     ranges = IRanges::IRanges(start = 1, end = allele_seq_ln)
   )
-  scanflag <- scanBamFlag(isProperPair = TRUE)
+  scanflag <- scanBamFlag(
+    isProperPair = TRUE, isSecondaryAlignment = FALSE, isDuplicate = FALSE,
+    isNotPassingQualityControls = FALSE, isSupplementaryAlignment = FALSE
+  )
   scan_param <- ScanBamParam(
     flag = scanflag,
-    what = c("qname", "flag"),
+    mapqFilter = 20,
     which = allele_to_scan,
   )
   pileup_param <- PileupParam(
-    min_mapq = 20, distinguish_strands = FALSE
+    min_mapq = 20, distinguish_strands = FALSE, max_depth = 9999
   )
   p_dt <- setDT(
     pileup(
@@ -596,6 +625,19 @@ dump_intermedia_tables <- function(out, mm, cov_dt, bin_dt = NULL, mm_dt = NULL)
   saveRDS(to_save, out)
 }
 
+estimate_dp_corrector <- function(tbam, nbam, alleles) {
+  n_seq_depth <- count_n_reads_from_bam(
+    bam = args$nbam, which = alleles, tagfilter = list(NM = c(0, 1))
+  )
+  print("[INFO] Counting sequencing depth from realigned tumor BAM")
+  t_seq_depth <- count_n_reads_from_bam(
+    bam = args$tbam, which = alleles, tagfilter = list(NM = c(0, 1))
+  )
+  print(n_seq_depth)
+  print(t_seq_depth)
+  n_seq_depth / t_seq_depth
+}
+
 call_hla_loh <- function(
     dt, tbam, nbam, hlaref, outdir,
     purity, ploidy, multfactor, min_dp, min_necnt,
@@ -610,6 +652,8 @@ call_hla_loh <- function(
   hla_seq <- read.fasta(hlaref)
   a1_seq <- hla_seq[[a1]]
   a2_seq <- hla_seq[[a2]]
+  multfactor <- estimate_dp_corrector(tbam=tbam, nbam=nbam, alleles = c(a1, a2))
+  print(multfactor)
   print(paste(
     "[INFO] Align sequences between ", alleles_str,
     sep = ""
@@ -645,10 +689,14 @@ call_hla_loh <- function(
     allele_length = length(a2_seq)
   )
 
-  t_a1_cov <- get_allele_coverage(allele = a1, bam = tbam)
-  t_a2_cov <- get_allele_coverage(allele = a2, bam = tbam)
-  n_a1_cov <- get_allele_coverage(allele = a1, bam = nbam, min_dp = min_dp)
-  n_a2_cov <- get_allele_coverage(allele = a2, bam = nbam, min_dp = min_dp)
+  t_a1_cov <- extract_allele_coverage(allele = a1, bam = tbam, hlaref = hlaref)
+  t_a2_cov <- extract_allele_coverage(allele = a2, bam = tbam, hlaref = hlaref)
+  n_a1_cov <- extract_allele_coverage(
+    allele = a1, bam = nbam, hlaref = hlaref, min_dp = min_dp
+  )
+  n_a2_cov <- extract_allele_coverage(
+    allele = a2, bam = nbam, hlaref = hlaref, min_dp = min_dp
+  )
   t_a1_cov <- t_a1_cov[pos %in% n_a1_cov$pos]
   t_a2_cov <- t_a2_cov[pos %in% n_a2_cov$pos]
   if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
@@ -746,7 +794,6 @@ call_hla_loh <- function(
     mm_dt = mm_dt
   )
 
-
   report
 }
 
@@ -786,30 +833,6 @@ if (!is.null(args$tstates)) {
   }
 }
 print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
-
-print("[INFO] Counting sequencing depth from realigned normal BAM")
-# FIXME: tagfilter should be generated with args$min_necnt, rather than
-# hard-coded
-n_seq_depth <- count_n_reads_from_bam(
-  bam = args$nbam, tagfilter = list(NM = c(0, 1))
-)
-print("[INFO] Counting sequencing depth from realigned tumor BAM")
-t_seq_depth <- count_n_reads_from_bam(
-  bam = args$tbam, tagfilter = list(NM = c(0, 1))
-)
-if (t_seq_depth <= 0) {
-  print("[ERROR] Found no alignments in the provided tumor BAM")
-  quit(status = 1)
-}
-print(n_seq_depth)
-print(t_seq_depth)
-multfactor <- n_seq_depth / t_seq_depth
-print(paste("[INFO] Normal sequencing depth = ", n_seq_depth, sep = ""))
-print(paste("[INFO] Tumor sequencing depth = ", t_seq_depth, sep = ""))
-print(paste(
-  "[INFO] Sequencing depth correcting factor = ", multfactor,
-  sep = ""
-))
 
 alleles_n <- extract_seqinfo_from_bam(bam = args$nbam)
 alleles_t <- extract_seqinfo_from_bam(bam = args$tbam)
