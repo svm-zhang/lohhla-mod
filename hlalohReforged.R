@@ -615,27 +615,22 @@ estimate_cn_conf <- function(cn_dt, which) {
   list(est_lower = cn_est_lower, est_upper = cn_est_upper)
 }
 
-dump_intermedia_tables <- function(out, mm, cov_dt, bin_dt = NULL, mm_dt = NULL) {
+dump_intermedia_tables <- function(
+  out, dp_info, mm, cov_dt, bin_dt = NULL, mm_dt = NULL) {
   to_save <- list(
     mm = mm,
     cov_dt = cov_dt,
     bin_dt = bin_dt,
-    mm_dt = mm_dt
+    mm_dt = mm_dt,
+    dp_info = dp_info
   )
   saveRDS(to_save, out)
 }
 
-estimate_dp_corrector <- function(tbam, nbam, alleles) {
-  n_seq_depth <- count_n_reads_from_bam(
-    bam = args$nbam, which = alleles, tagfilter = list(NM = c(0, 1))
+estimate_dp <- function(bam, alleles) {
+  count_n_reads_from_bam(
+    bam = bam, which = alleles, tagfilter = list(NM = c(0, 1))
   )
-  print("[INFO] Counting sequencing depth from realigned tumor BAM")
-  t_seq_depth <- count_n_reads_from_bam(
-    bam = args$tbam, which = alleles, tagfilter = list(NM = c(0, 1))
-  )
-  print(n_seq_depth)
-  print(t_seq_depth)
-  n_seq_depth / t_seq_depth
 }
 
 call_hla_loh <- function(
@@ -652,8 +647,10 @@ call_hla_loh <- function(
   hla_seq <- read.fasta(hlaref)
   a1_seq <- hla_seq[[a1]]
   a2_seq <- hla_seq[[a2]]
-  multfactor <- estimate_dp_corrector(tbam=tbam, nbam=nbam, alleles = c(a1, a2))
-  print(multfactor)
+  n_seq_depth <- estimate_dp(bam = nbam, alleles = c(a1, a2))
+  t_seq_depth <- estimate_dp(bam = tbam, alleles = c(a1, a2))
+  dp_info <- list(n_seq_depth = n_seq_depth, t_seq_depth = t_seq_depth)
+  multfactor <- n_seq_depth / t_seq_depth
   print(paste(
     "[INFO] Align sequences between ", alleles_str,
     sep = ""
@@ -788,6 +785,7 @@ call_hla_loh <- function(
   names(a2_cov_dt) <- gsub("a2_", "", names(a2_cov_dt))
   dump_intermedia_tables(
     out = out_rds,
+    dp_info = dp_info,
     mm = mm,
     cov_dt = rbind(a1_cov_dt, a2_cov_dt),
     bin_dt = bin_dt,
