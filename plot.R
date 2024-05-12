@@ -163,7 +163,7 @@ plot_baf_profile <- function(mm_dt, out, mask = FALSE, height = 6, width = 12) {
   ggsave(out, m, width = width, height = height)
 }
 
-plot_profile <- function(dat, plot_dir) {
+plot_profile <- function(hla_gene, dat, plot_dir) {
   mm <- dat$mm
   cov_dt <- dat$cov_dt
   alleles <- unique(cov_dt$seqnames)
@@ -173,23 +173,23 @@ plot_profile <- function(dat, plot_dir) {
   a2_aln_start <- mm$a2$start
   cov_dt[seqnames == a1, pos := pos + a2_aln_start - 1]
   cov_dt[seqnames == a2, pos := pos + a1_aln_start - 1]
-  # out <- file.path(plot_dir, "t_dp.pdf")
-  # plot_cov_profile(
-  #  cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "t_dp", out = out
-  # )
-  # out <- file.path(plot_dir, "n_dp.pdf")
-  # plot_cov_profile(
-  #  cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "n_dp", out = out
-  # )
-  out <- file.path(plot_dir, "tn_dp.pdf")
+  out <- file.path(plot_dir, paste(hla_gene, ".t_dp.pdf", sep=""))
+  plot_cov_profile(
+   cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "t_dp", out = out
+  )
+  out <- file.path(plot_dir, paste(hla_gene, ".n_dp.pdf", sep=""))
+  plot_cov_profile(
+   cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "n_dp", out = out
+  )
+  out <- file.path(plot_dir, paste(hla_gene, ".tn_dp.pdf", sep=""))
   plot_tn_cov_profile(
     cov_dt = cov_dt, a1 = a1, a2 = a2, out = out
   )
-  out <- file.path(plot_dir, "logR.pdf")
+  out <- file.path(plot_dir, paste(hla_gene, ".logR.pdf", sep=""))
   plot_logr_profile(
     cov_dt = cov_dt, a1 = a1, a2 = a2, out = out
   )
-  out <- file.path(plot_dir, "baf.pdf")
+  out <- file.path(plot_dir, paste(hla_gene, ".baf.pdf", sep=""))
   plot_baf_profile(mm_dt = dat$mm_dt, out = out)
 }
 
@@ -221,7 +221,7 @@ plot_hlaloh <- function(dt, sample, wkdir) {
   if (!dir.exists(plot_dir)) {
     dir.create(plot_dir, recursive = TRUE)
   }
-  plot_profile(hla_gene_dat, plot_dir)
+  plot_profile(hla_gene, hla_gene_dat, plot_dir)
   return(NULL)
 }
 
