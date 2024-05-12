@@ -62,7 +62,7 @@ plot_cov_profile <- function(
   max_x <- max(cov_dt$pos)
   max_y <- max(cov_dt[[cov_col]])
   m <- ggplot(cov_dt, aes(x = pos, y = cov_dt[[cov_col]])) +
-    geom_line(aes(color = seqnames), size = 1.2) +
+    geom_line(aes(color = seqnames), linewidth = 1.2) +
     scale_color_manual(
       name = "",
       values = c(a1_color, a2_color),
@@ -76,7 +76,7 @@ plot_cov_profile <- function(
 }
 
 plot_tn_cov_profile <- function(
-    cov_dt, a1, a2, out,
+    cov_dt, corrector, a1, a2, out,
     mask = FALSE, height = 6, width = 12) {
   if (mask) {
     cov_dt[seqnames == a1, seqnames := "Allele1"]
@@ -84,13 +84,14 @@ plot_tn_cov_profile <- function(
     a1 <- "Allele1"
     a2 <- "Allele2"
   }
-  print(nrow(cov_dt))
+  print(corrector)
   plot_params <- init_plot_params()
   max_x <- max(cov_dt$pos)
-  max_y <- max(cov_dt$t_dp, cov_dt$n_dp)
-  m <- ggplot(cov_dt, aes(x = pos, y = t_dp, color = seqnames)) +
-    geom_line(size = 0.8) +
-    geom_line(data = cov_dt, aes(x = pos, y = n_dp), linetype = "dotdash") +
+  max_y <- max(
+    log10(cov_dt$t_dp * corrector), log10(cov_dt$n_dp))
+  m <- ggplot(cov_dt, aes(x = pos, y = log10(t_dp * corrector), color = seqnames)) +
+    geom_line(linewidth = 0.8) +
+    geom_line(data = cov_dt, aes(x = pos, y = log10(n_dp)), linetype = "dotdash") +
     facet_wrap(~seqnames, nrow = 2, scales = "free") +
     scale_color_manual(
       name = "",
@@ -98,7 +99,7 @@ plot_tn_cov_profile <- function(
       limits = c(a1, a2)
     ) +
     scale_x_continuous(expand = c(0, 0), limits = c(0, max_x + 200)) +
-    scale_y_continuous(expand = c(0, 0), limits = c(0, max_y + 30)) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, max_y + 1)) +
     labs(x = "Position", y = "Depth") +
     plot_params$theme
   ggsave(out, m, width = width, height = height)
@@ -120,7 +121,7 @@ plot_logr_profile <- function(
   min_y <- min(cov_dt$logR)
   max_y <- max(cov_dt$logR)
   m <- ggplot(cov_dt, aes(x = pos, y = logR)) +
-    geom_line(aes(color = seqnames), size = 1.2) +
+    geom_line(aes(color = seqnames), linewidth = 1.2) +
     geom_hline(
       aes(yintercept = a1_median_logr),
       color = a1_color, linetype = "dashed"
@@ -149,7 +150,7 @@ plot_baf_profile <- function(mm_dt, out, mask = FALSE, height = 6, width = 12) {
   plot_params <- init_plot_params()
   max_x <- max(mm_dt$a1_pos)
   m <- ggplot(data = mm_dt, aes(x = a1_pos, y = baf_correct)) +
-    geom_point(aes(color = a1_seqnames), size = 0.5, stroke = NA) +
+    geom_point(aes(color = a1_seqnames), size = 1.5, stroke = NA) +
     geom_hline(aes(yintercept = 0.5), color = "grey", linetype = "dashed") +
     scale_color_manual(
       name = "",
@@ -166,6 +167,8 @@ plot_baf_profile <- function(mm_dt, out, mask = FALSE, height = 6, width = 12) {
 plot_profile <- function(hla_gene, dat, plot_dir) {
   mm <- dat$mm
   cov_dt <- dat$cov_dt
+  dp_info <- dat$dp_info
+  dp_corrector <- dp_info$n_seq_depth / dp_info$t_seq_depth
   alleles <- unique(cov_dt$seqnames)
   a1 <- alleles[1]
   a2 <- alleles[2]
@@ -183,7 +186,7 @@ plot_profile <- function(hla_gene, dat, plot_dir) {
   )
   out <- file.path(plot_dir, paste(hla_gene, ".tn_dp.pdf", sep=""))
   plot_tn_cov_profile(
-    cov_dt = cov_dt, a1 = a1, a2 = a2, out = out
+    cov_dt = cov_dt, corrector = dp_corrector, a1 = a1, a2 = a2, out = out
   )
   out <- file.path(plot_dir, paste(hla_gene, ".logR.pdf", sep=""))
   plot_logr_profile(
