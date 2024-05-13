@@ -270,8 +270,7 @@ extract_tstates <- function(tstate_est_file) {
   )
 }
 
-count_n_reads_from_bam <- function(
-    bam, which, tagfilter = list()) {
+count_n_reads_from_bam <- function(bam, which, tagfilter = list()) {
   seqinfo <- extract_seqinfo_from_bam(bam = bam)
   allele_seq_ln <- seqinfo[which(names(seqinfo) %in% which)]
   dt <- data.table(seqnames = names(allele_seq_ln), end = allele_seq_ln)
@@ -374,7 +373,7 @@ extract_allele_coverage <- function(allele, bam, hlaref, min_dp = 0) {
     command = "samtools",
     args = c(
       "mpileup", "-f", hlaref,
-      "--rf", 2, "-q", 20, "-Q", 20, "-r", allele, bam
+      "--rf", 2, "-Q", 20, "-r", allele, bam
     ),
     stdout = TRUE,
     stderr = FALSE,
@@ -556,14 +555,20 @@ prep_mm_cov <- function(mm, a1_dt, a2_dt) {
   mm_est_dt
 }
 
-estimate_baf <- function(mm_dt, bin_dt) {
+estimate_baf <- function(mm_dt, capture_bias) {
   mm_dt[, baf := a1_t_dp / (a1_t_dp + a2_t_dp)] # nolint
-  if (!"capture_bias_bin" %in% names(bin_dt)) {
-    print("[WARN] Found no column named capture_bias_bin in bin_dt")
-    print("[WARN] No capture bias will be corrected for BAF")
-    mm_dt[, baf_correct := baf]
-    return(mm_dt)
+  mm_dt[, baf_correct := baf / capture_bias]
+  n_odd_baf <- nrow(mm_dt[baf_correct > 1])
+  if (n_odd_baf > 0) {
+    print("[WARN] Found mismatch sites with corrected BAF larger than 1")
+    print(mm_dt[baf_correct > 1])
+    print("[WARN] Please check if two alleles have consistent coverage")
+    print("[WARN] Skip these sites for estimating copy number")
   }
+  mm_dt
+}
+
+estimate_cn <- function(mm_dt, bin_dt) {
   req_cols <- c("bin", "logR_combined_bin")
   miss_cols <- req_cols[which(!req_cols %in% names(bin_dt))]
   if (length(miss_cols) > 0) {
@@ -578,21 +583,17 @@ estimate_baf <- function(mm_dt, bin_dt) {
   }
   mm_dt <- merge(
     mm_dt,
-    bin_dt[, c("bin", "logR_combined_bin", "capture_bias_bin")],
+    bin_dt[, c("bin", "logR_combined_bin")],
     by = "bin",
     all.x = TRUE
   )
-  mm_dt[, baf_correct := baf / capture_bias_bin]
-  mm_dt
-}
-
-estimate_cn <- function(mm_dt) {
   mm_dt[, "a1_cn" :=
     (purity - 1 + baf_correct * 2^(logR_combined_bin / gamma) * # nolint
       ((1 - purity) * 2 + purity * ploidy)) / purity, ]
   mm_dt[, "a2_cn" :=
     (purity - 1 - (baf_correct - 1) * 2^(logR_combined_bin / gamma) * # nolint
       ((1 - purity) * 2 + purity * ploidy)) / purity, ]
+  mm_dt[baf_correct > 1, ":="(a1_cn = NaN, a2_cn = NaN)]
   mm_dt
 }
 
@@ -616,7 +617,8 @@ estimate_cn_conf <- function(cn_dt, which) {
 }
 
 dump_intermedia_tables <- function(
-  out, dp_info, mm, cov_dt, bin_dt = NULL, mm_dt = NULL) {
+    out, dp_info, mm,
+    cov_dt, bin_dt = NULL, mm_dt = NULL) {
   to_save <- list(
     mm = mm,
     cov_dt = cov_dt,
@@ -739,6 +741,7 @@ call_hla_loh <- function(
   .SDcols = c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
   ]
   bin_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  capture_bias <- median(bin_dt$capture_bias_bin, na.rm = TRUE)
   setkey(bin_dt, bin)
   report$Num_Bins <- nrow(bin_dt)
   report$Num_CN_Loss_Supporting_Bins <- nrow(
@@ -751,13 +754,13 @@ call_hla_loh <- function(
     print("[INFO] Cannot estimate copy numbers. Moving to next HLA gene")
     return(report)
   }
-  mm_dt <- estimate_baf(mm_dt = mm_dt, bin_dt = bin_dt)
+  mm_dt <- estimate_baf(mm_dt = mm_dt, capture_bias = capture_bias)
   paired_t_test <- t.test(mm_dt$a1_logR, mm_dt$a2_logR, paired = TRUE)
   report$MM_LogR_Paired_Pvalue <- paired_t_test$p.value
   report$Median_BAF <- median(mm_dt$baf_correct, na.rm = TRUE)
 
   print("[INFO] Estimate copy number at mismatch sites")
-  mm_dt <- estimate_cn(mm_dt = mm_dt)
+  mm_dt <- estimate_cn(mm_dt = mm_dt, bin_dt = bin_dt)
   mm_dt[, ":="(
     a1_bin_cn = median(a1_cn, na.rm = TRUE),
     a2_bin_cn = median(a2_cn, na.rm = TRUE)
