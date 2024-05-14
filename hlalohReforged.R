@@ -603,6 +603,13 @@ estimate_dp <- function(bam, alleles) {
   )
 }
 
+estimate_capture_bias <- function(n_a1_cov, n_a2_cov, aln) {
+  n_cov_dt <- merge(n_a1_cov, aln, by.x = "pos", by.y = "a1_pos")
+  n_cov_dt <- merge(n_a2_cov, n_cov_dt, by.x = "pos", by.y = "a2_pos")
+  n_cov_dt[, cov_ratio := count.x / count.y]
+  median(n_cov_dt$cov_ratio, na.rm = TRUE)
+}
+
 call_hla_loh <- function(
     dt, tbam, nbam, hlaref, outdir,
     purity, ploidy, min_dp, min_necnt,
@@ -654,6 +661,10 @@ call_hla_loh <- function(
   )
   t_a1_cov <- t_a1_cov[pos %in% n_a1_cov$pos]
   t_a2_cov <- t_a2_cov[pos %in% n_a2_cov$pos]
+  capture_bias <- estimate_capture_bias(
+    n_a1_cov = n_a1_cov, n_a2_cov = n_a2_cov, aln = mm$aln_dt
+  )
+  print(capture_bias)
   if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
     print("[INFO] Found no coverage for either allele in normal")
     print("[INFO] Move to next HLA gene")
@@ -696,8 +707,9 @@ call_hla_loh <- function(
   ),
   .SDcols = c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
   ]
-  bin_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
-  capture_bias <- median(bin_dt$capture_bias_bin, na.rm = TRUE)
+  # bin_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
+  # capture_bias <- median(bin_dt$capture_bias_bin, na.rm = TRUE)
+  # print(capture_bias)
   setkey(bin_dt, bin)
   report$Num_Bins <- nrow(bin_dt)
   report$Num_CN_Loss_Supporting_Bins <- nrow(
