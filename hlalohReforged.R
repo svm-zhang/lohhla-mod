@@ -605,7 +605,7 @@ estimate_dp <- function(bam, alleles) {
 
 call_hla_loh <- function(
     dt, tbam, nbam, hlaref, outdir,
-    purity, ploidy, multfactor, min_dp, min_necnt,
+    purity, ploidy, min_dp, min_necnt,
     tid = "example_tumor", nid = "example_normal", gamma = 1) {
   a1 <- dt$A1
   a2 <- dt$A2
@@ -828,7 +828,7 @@ loh_res_dt <- alleles_dt[, call_hla_loh(
   .SD,
   tbam = filt_tbam, nbam = filt_nbam, hlaref = args$hlaref,
   outdir = args$outdir, purity = purity, ploidy = ploidy,
-  multfactor = multfactor, min_dp = args$min_cov, min_necnt = args$min_nm,
+  min_dp = args$min_cov, min_necnt = args$min_nm,
   tid = tid, nid = nid
 ), by = "HLAGene"]
 out_res <- file.path(args$outdir, paste(tid, ".loh.res.tsv", sep = ""))
