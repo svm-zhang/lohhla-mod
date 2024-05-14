@@ -84,9 +84,11 @@ plot_tn_cov_profile <- function(
     a1 <- "Allele1"
     a2 <- "Allele2"
   }
-  print(corrector)
   plot_params <- init_plot_params()
   max_x <- max(cov_dt$pos)
+  min_y <- min(
+    log10(cov_dt$t_dp * corrector), log10(cov_dt$n_dp)
+  )
   max_y <- max(
     log10(cov_dt$t_dp * corrector), log10(cov_dt$n_dp)
   )
@@ -106,7 +108,7 @@ plot_tn_cov_profile <- function(
       limits = c(a1, a2)
     ) +
     scale_x_continuous(expand = c(0, 0), limits = c(0, max_x + 200)) +
-    scale_y_continuous(expand = c(0, 0), limits = c(0, max_y + 1)) +
+    scale_y_continuous(expand = c(0, 0), limits = c(min_y - 1, max_y + 1)) +
     labs(x = "Position", y = "Depth") +
     plot_params$theme
   ggsave(out, m, width = width, height = height)
