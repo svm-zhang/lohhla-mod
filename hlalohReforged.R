@@ -146,20 +146,20 @@ extract_rgsm_from_bam_header <- function(bam) {
   sm
 }
 
-paste_vector <- function(v, sep = "") {
-  vt <- v[1]
-  if (length(v) > 1) {
-    for (g in 2:length(v)) {
-      vt <- paste(vt, v[g], sep = sep)
-    }
-  }
-  vt <- paste(vt, " EnD", sep = "")
-  out_v <- sub(" EnD", "", vt)
-  out_v <- sub("NA , ", "", out_v)
-  out_v <- sub(" , NA", "", out_v)
-  out_v <- sub(" , NA , ", " , ", out_v)
-  out_v
-}
+# paste_vector <- function(v, sep = "") {
+#  vt <- v[1]
+#  if (length(v) > 1) {
+#    for (g in 2:length(v)) {
+#      vt <- paste(vt, v[g], sep = sep)
+#    }
+#  }
+#  vt <- paste(vt, " EnD", sep = "")
+#  out_v <- sub(" EnD", "", vt)
+#  out_v <- sub("NA , ", "", out_v)
+#  out_v <- sub(" , NA", "", out_v)
+#  out_v <- sub(" , NA , ", " , ", out_v)
+#  out_v
+# }
 
 # https://rdrr.io/bioc/Biostrings/src/R/PairwiseAlignments-io.R
 # using .pre2postaligned function in writePariwiseAlignments function
@@ -270,8 +270,11 @@ count_n_reads_from_bam <- function(bam, which, tagfilter = list()) {
 filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
   bamf <- BamFile(file = bam)
 
+  # including secondary alignments, otherwise, one random
+  # allele out of 2 has more coverage than expected, while
+  # the other has lower-than-expected coverage
   scanflag <- scanBamFlag(
-    isProperPair = TRUE, isSecondaryAlignment = FALSE, isDuplicate = FALSE,
+    isProperPair = TRUE, isSecondaryAlignment = NA, isDuplicate = FALSE,
     isNotPassingQualityControls = FALSE, isSupplementaryAlignment = FALSE
   )
   scan_param <- ScanBamParam(
@@ -313,7 +316,8 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
   aln_dt[, "n_ecnt" := n_mm + n_ins + n_del]
   aln_dt <- aln_dt[n_ecnt <= min_necnt]
   aln_dt[, "nread_per_frag" := .N, by = "qname"]
-  aln_dt <- aln_dt[nread_per_frag == 2]
+  # because we are including secondary alignments, here using mod operator
+  aln_dt <- aln_dt[nread_per_frag %% 2 == 0]
   filter <- S4Vectors::FilterRules(
     list(function(x) x$qname %in% aln_dt$qname)
   )
@@ -338,6 +342,7 @@ init_loh_report <- function(a1, a2) {
     "Median_BAF" = NaN,
     "Num_MM" = as.integer(0),
     "Num_Bins" = as.integer(0),
+    "Num_Bins_Used" = as.integer(0),
     "Num_CN_Loss_Supporting_Bins" = as.integer(0)
   )
 }
@@ -347,7 +352,7 @@ extract_allele_coverage <- function(allele, bam, hlaref, min_dp = 0) {
     command = "samtools",
     args = c(
       "mpileup", "-f", hlaref,
-      "--rf", 2, "-Q", 20, "-r", allele, bam
+      "--rf", 2, "--ff", 3584, "-Q", 20, "-r", allele, bam
     ),
     stdout = TRUE,
     stderr = FALSE,
@@ -710,6 +715,7 @@ call_hla_loh <- function(
   #  allele_length = mm$a2$len
   # )
   bins <- make_bins(aln = mm)
+  report$Num_Bins <- nrow(bins$a1_bin)
 
   t_a1_cov <- extract_allele_coverage(allele = a1, bam = tbam, hlaref = hlaref)
   t_a2_cov <- extract_allele_coverage(allele = a2, bam = tbam, hlaref = hlaref)
@@ -748,17 +754,6 @@ call_hla_loh <- function(
   )
   names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
 
-  report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
-  report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
-  report$HLA_A1_MM_Median_LogR <- median(
-    a1_cov_dt[a1_pos %in% mm$diffSeq1]$a1_logR,
-    na.rm = TRUE
-  )
-  report$HLA_A2_MM_Median_LogR <- median(
-    a2_cov_dt[a2_pos %in% mm$diffSeq2]$a2_logR,
-    na.rm = TRUE
-  )
-
   bin_dt <- estimate_binned_logr(
     a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
   )
@@ -771,10 +766,6 @@ call_hla_loh <- function(
   # capture_bias <- median(bin_dt$capture_bias_bin, na.rm = TRUE)
   # print(capture_bias)
   setkey(bin_dt, bin)
-  report$Num_Bins <- nrow(bin_dt)
-  report$Num_CN_Loss_Supporting_Bins <- nrow(
-    bin_dt[cn_loss_test_bin <= 0.01]
-  )
 
   mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
   if (is.null(mm_dt)) {
@@ -795,6 +786,20 @@ call_hla_loh <- function(
   ),
   by = "bin"
   ]
+  # FIXME: I should get this right after finished making bins
+  bins_no_mm <- bin_dt$bin[which(!bin_dt$bin %in% unique(mm_dt$bin))]
+  report$Num_Bins_Used <- report$Num_Bins - length(bins_no_mm)
+  report$HLA_A1_Median_LogR <- median(
+    a1_cov_dt[!a1_bin %in% bins_no_mm]$a1_logR,
+    na.rm = TRUE
+  )
+  report$HLA_A2_Median_LogR <- median(
+    a2_cov_dt[!a2_bin %in% bins_no_mm]$a2_logR,
+    na.rm = TRUE
+  )
+  report$HLA_A1_MM_Median_LogR <- median(mm_dt$a1_logR, na.rm = TRUE)
+  report$HLA_A2_MM_Median_LogR <- median(mm_dt$a2_logR, na.rm = TRUE)
+
   cn_dt <- unique(mm_dt, by = "bin")
   setkey(cn_dt, bin)
   report$HLA_A1_CN <- round(median(cn_dt$a1_bin_cn, na.rm = TRUE), 4)
@@ -807,6 +812,9 @@ call_hla_loh <- function(
   report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
   report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
   bin_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_dt]
+  report$Num_CN_Loss_Supporting_Bins <- nrow(
+    bin_dt[cn_loss_test_bin <= 0.01 & !bin %in% bins_no_mm]
+  )
   rm(cn_dt)
 
   hla_gene <- gsub("(_|\\*)*(([0-9])+(_|:)*)+", "", a1)
