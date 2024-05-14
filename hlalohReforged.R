@@ -161,72 +161,14 @@ paste_vector <- function(v, sep = "") {
   out_v
 }
 
-get_mm_bw_alleles <- function(alignment, chunksize = 60, returnlist = FALSE) {
-  a1_aln <- pattern(alignment) # Get the alignment for the first sequence
-  a2_aln <- subject(alignment) # Get the alignment for the second sequence
-
-  a1_aln_start <- start(pattern(alignment))
-  a1_aln_end <- end(pattern(alignment))
-  a2_aln_start <- start(subject(alignment))
-  a2_aln_end <- end(subject(alignment))
-
-  k <- 1 + a1_aln_start - 1
-  # a1_aln_seq is a character vector showing the alignment from a1 pov
-  a1_aln_seq <- unlist(strsplit(as.character(a1_aln), split = ""))
-  seq1_positions <- c()
-  for (char in a1_aln_seq) {
-    if (char %in% c("C", "G", "A", "T")) {
-      seq1_positions <- c(seq1_positions, k)
-      k <- k + 1
-      next
-    }
-
-    if (char %in% c("-")) {
-      seq1_positions <- c(seq1_positions, k)
-      next
-    }
-  }
-
-  k <- 1 + a2_aln_start - 1
-  a2_aln_seq <- unlist(strsplit(as.character(a2_aln), split = ""))
-  seq2_positions <- c()
-  for (char in a2_aln_seq) {
-    if (char %in% c("C", "G", "A", "T")) {
-      seq2_positions <- c(seq2_positions, k)
-      k <- k + 1
-      next
-    }
-
-    if (char %in% c("-")) {
-      seq2_positions <- c(seq2_positions, k)
-      next
-    }
-  }
-
-  seq1_diff <- seq1_positions[a1_aln_seq != a2_aln_seq]
-  seq2_diff <- seq2_positions[a1_aln_seq != a2_aln_seq]
-
-  type1_diff <- rep(1, length(seq1_diff))
-  type1_diff[which(a1_aln_seq[a1_aln_seq != a2_aln_seq] %in% "-")] <- 2
-
-  type2_diff <- rep(1, length(seq2_diff))
-  type2_diff[which(a2_aln_seq[a2_aln_seq != a1_aln_seq] %in% "-")] <- 2
-
-  aln_dt <- data.table(
-    seq1_diff = seq1_diff,
-    seq2_diff = seq2_diff,
-    type1_diff = type1_diff,
-    type2_diff = type2_diff
+# https://rdrr.io/bioc/Biostrings/src/R/PairwiseAlignments-io.R
+# using .pre2postaligned function in writePariwiseAlignments function
+extract_aln_in_pos <- function(axset) {
+  pos <- seq(start(axset@range), end(axset@range))
+  data.table(
+    pos = pos,
+    pa_pos = Biostrings:::.pre2postaligned(pos, axset)
   )
-  aln_dt <- aln_dt[type1_diff != 2 & type2_diff != 2]
-
-  out <- list()
-  out$diffSeq1 <- aln_dt$seq1_diff
-  out$diffSeq2 <- aln_dt$seq2_diff
-  out$a1 <- list(start = a1_aln_start, end = a1_aln_end)
-  out$a2 <- list(start = a2_aln_start, end = a2_aln_end)
-
-  out
 }
 
 get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
@@ -240,9 +182,35 @@ get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
     substitutionMatrix = sigma, gapOpening = -2, gapExtension = -4,
     scoreOnly = FALSE, type = "local"
   )
-  mm <- get_mm_bw_alleles(pair_aln, returnlist = TRUE)
+  a1_aln <- pattern(pair_aln) # Get the pair_aln for the first sequence
+  a2_aln <- subject(pair_aln) # Get the pair_aln for the second sequence
 
-  mm
+  a1_aln_start <- start(pattern(pair_aln))
+  a1_aln_end <- end(pattern(pair_aln))
+  a2_aln_start <- start(subject(pair_aln))
+  a2_aln_end <- end(subject(pair_aln))
+
+  p_aln <- extract_aln_in_pos(axset = a1_aln)
+  s_aln <- extract_aln_in_pos(axset = a2_aln)
+  p_aln <- merge(p_aln, s_aln, by = "pa_pos", all = TRUE)
+  p_aln[, a1_ref := unlist(strsplit(as.character(a1_aln), split = ""))]
+  p_aln[, a2_ref := unlist(strsplit(as.character(a2_aln), split = ""))]
+  p_aln <- p_aln[a1_ref != "-" & a2_ref != "-"]
+  setnames(p_aln, c("pos.x", "pos.y"), c("a1_pos", "a2_pos"))
+  diffSeq1 <- nrow(p_aln[a1_ref != a2_ref]$a1_pos)
+  diffSeq2 <- nrow(p_aln[a1_ref != a2_ref]$a2_pos)
+
+  if (length(diffSeq1) == 0) {
+    print("[INFO] Found insufficient num mismatches between the two alleles")
+    return(NULL)
+  }
+  list(
+    aln_dt = p_aln,
+    diffSeq1 = p_aln[a1_ref != a2_ref]$a1_pos,
+    diffSeq2 = p_aln[a1_ref != a2_ref]$a2_pos,
+    a1 = list(start = a1_aln_start, end = a1_aln_end),
+    a2 = list(start = a2_aln_start, end = a2_aln_end)
+  )
 }
 
 get_indel_length <- function(cigar) {
@@ -658,23 +626,11 @@ call_hla_loh <- function(
     sep = ""
   ))
   mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
+  if (is.null(mm)) {
+    print("[INFO] no call will be made. Move to the next HLA gene")
+    return(report)
+  }
   report$Num_MM <- length(mm$diffSeq1)
-
-  if (length(mm$diffSeq1) == 0) {
-    print(paste(
-      "[INFO] there is no difference between the two alleles",
-      a1, a2,
-      sep = " "
-    ))
-    print("[INFO] no call will be made. Move to the next HLA gene")
-    return(report)
-  }
-
-  if (length(mm$diffSeq1) < 5) {
-    print("[INFO] HLA alleles are similar (less than 5 mismatch positions)")
-    print("[INFO] no call will be made. Move to the next HLA gene")
-    return(report)
-  }
 
   print("[INFO] Make bins accounting for alignment start position")
   a1_bin_dt <- make_bins(
