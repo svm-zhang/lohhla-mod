@@ -88,10 +88,17 @@ plot_tn_cov_profile <- function(
   plot_params <- init_plot_params()
   max_x <- max(cov_dt$pos)
   max_y <- max(
-    log10(cov_dt$t_dp * corrector), log10(cov_dt$n_dp))
-  m <- ggplot(cov_dt, aes(x = pos, y = log10(t_dp * corrector), color = seqnames)) +
+    log10(cov_dt$t_dp * corrector), log10(cov_dt$n_dp)
+  )
+  m <- ggplot(
+    cov_dt,
+    aes(x = pos, y = log10(t_dp * corrector), color = seqnames)
+  ) +
     geom_line(linewidth = 0.8) +
-    geom_line(data = cov_dt, aes(x = pos, y = log10(n_dp)), linetype = "dotdash") +
+    geom_line(
+      data = cov_dt,
+      aes(x = pos, y = log10(n_dp)), linetype = "dotdash"
+    ) +
     facet_wrap(~seqnames, nrow = 2, scales = "free") +
     scale_color_manual(
       name = "",
@@ -152,6 +159,7 @@ plot_baf_profile <- function(mm_dt, out, mask = FALSE, height = 6, width = 12) {
   m <- ggplot(data = mm_dt, aes(x = a1_pos, y = baf_correct)) +
     geom_point(aes(color = a1_seqnames), size = 1.5, stroke = NA) +
     geom_hline(aes(yintercept = 0.5), color = "grey", linetype = "dashed") +
+    geom_hline(aes(yintercept = 1.0), color = "grey", linetype = "dashed") +
     scale_color_manual(
       name = "",
       values = c(a1_color),
@@ -176,23 +184,23 @@ plot_profile <- function(hla_gene, dat, plot_dir) {
   a2_aln_start <- mm$a2$start
   cov_dt[seqnames == a1, pos := pos + a2_aln_start - 1]
   cov_dt[seqnames == a2, pos := pos + a1_aln_start - 1]
-  out <- file.path(plot_dir, paste(hla_gene, ".t_dp.pdf", sep=""))
+  out <- file.path(plot_dir, paste(hla_gene, ".t_dp.pdf", sep = ""))
   plot_cov_profile(
-   cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "t_dp", out = out
+    cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "t_dp", out = out
   )
-  out <- file.path(plot_dir, paste(hla_gene, ".n_dp.pdf", sep=""))
+  out <- file.path(plot_dir, paste(hla_gene, ".n_dp.pdf", sep = ""))
   plot_cov_profile(
-   cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "n_dp", out = out
+    cov_dt = cov_dt, a1 = a1, a2 = a2, cov_col = "n_dp", out = out
   )
-  out <- file.path(plot_dir, paste(hla_gene, ".tn_dp.pdf", sep=""))
+  out <- file.path(plot_dir, paste(hla_gene, ".tn_dp.pdf", sep = ""))
   plot_tn_cov_profile(
     cov_dt = cov_dt, corrector = dp_corrector, a1 = a1, a2 = a2, out = out
   )
-  out <- file.path(plot_dir, paste(hla_gene, ".logR.pdf", sep=""))
+  out <- file.path(plot_dir, paste(hla_gene, ".logR.pdf", sep = ""))
   plot_logr_profile(
     cov_dt = cov_dt, a1 = a1, a2 = a2, out = out
   )
-  out <- file.path(plot_dir, paste(hla_gene, ".baf.pdf", sep=""))
+  out <- file.path(plot_dir, paste(hla_gene, ".baf.pdf", sep = ""))
   plot_baf_profile(mm_dt = dat$mm_dt, out = out)
 }
 
