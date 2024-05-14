@@ -171,14 +171,19 @@ extract_aln_in_pos <- function(axset) {
   )
 }
 
-get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
-  a1_seq <- paste_vector(toupper(a1_seq), sep = "")
-  a2_seq <- paste_vector(toupper(a2_seq), sep = "")
+get_mismatches_bw_alleles <- function(a1, a2, hlaref) {
+  hla_seq <- read.fasta(hlaref)
+  a1_seq <- hla_seq[[a1]]
+  a2_seq <- hla_seq[[a2]]
+  # a1_seq <- paste_vector(toupper(a1_seq), sep = "")
+  # print(length(a1_seq))
+  # a2_seq <- paste_vector(toupper(a2_seq), sep = "")
   sigma <- nucleotideSubstitutionMatrix(
     match = 2, mismatch = -1, baseOnly = TRUE
   )
   pair_aln <- pairwiseAlignment(
-    a1_seq, a2_seq,
+    DNAString(paste(toupper(a1_seq), collapse = "")),
+    DNAString(paste(toupper(a2_seq), collapse = "")),
     substitutionMatrix = sigma, gapOpening = -2, gapExtension = -4,
     scoreOnly = FALSE, type = "local"
   )
@@ -193,6 +198,7 @@ get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
   p_aln <- extract_aln_in_pos(axset = a1_aln)
   s_aln <- extract_aln_in_pos(axset = a2_aln)
   p_aln <- merge(p_aln, s_aln, by = "pa_pos", all = TRUE)
+  p_aln[, ":="(a1_seqnames = a1, a2_seqnames = a2)]
   p_aln[, a1_ref := unlist(strsplit(as.character(a1_aln), split = ""))]
   p_aln[, a2_ref := unlist(strsplit(as.character(a2_aln), split = ""))]
   p_aln <- p_aln[a1_ref != "-" & a2_ref != "-"]
@@ -208,8 +214,8 @@ get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
     aln_dt = p_aln,
     diffSeq1 = diffSeq1,
     diffSeq2 = diffSeq2,
-    a1 = list(start = a1_aln_start, end = a1_aln_end),
-    a2 = list(start = a2_aln_start, end = a2_aln_end)
+    a1 = list(start = a1_aln_start, end = a1_aln_end, len = length(a1_seq)),
+    a2 = list(start = a2_aln_start, end = a2_aln_end, len = length(a2_seq))
   )
 }
 
@@ -414,7 +420,7 @@ combine_tn_cov <- function(t_dt, n_dt) {
   allele_cov_dt
 }
 
-make_bins <- function(allele, aln, allele_length, bin_size = 150) {
+make_bins_old <- function(allele, aln, allele_length, bin_size = 150) {
   start_pos <- aln$start
   end_pos <- aln$end
   bin_breaks <- seq(start_pos, end_pos, by = bin_size)
@@ -443,11 +449,63 @@ make_bins <- function(allele, aln, allele_length, bin_size = 150) {
     seqnames = allele, start = istarts, end = iends, bin = indices
   )
   bin_dt[, end := ifelse(end > allele_length, allele_length, end)]
+  print(bin_dt)
+  stop()
 
   bin_dt
 }
 
+make_bins <- function(aln, bin_size = 150) {
+  # start_pos <- min(aln$aln_dt$pa_pos)
+  # end_pos <- max(aln$aln_dt$pa_pos)
+  # bin_breaks <- seq(start_pos, end_pos, by = bin_size)
+  ## the last bin can be less than 150, so merged with second last bin
+  ## end_pos + 2 was from original code
+  # bin_breaks <- c(bin_breaks[-length(bin_breaks)], end_pos + 2)
+  # istarts <- bin_breaks[-length(bin_breaks)]
+  ## this makes sure no end position of last bin not repeating as
+  ## start position in the next bin
+  # istarts[2:length(istarts)] <- istarts[2:length(istarts)] + 1
+  # iends <- bin_breaks[2:length(bin_breaks)]
+  # indices <- seq(1, length(istarts))
+
+  # if (start_pos > 2) {
+  #  istarts <- c(1, istarts)
+  #  iends <- c(start_pos - 1, iends)
+  #  indices <- c(0, indices)
+  # }
+  # if (allele_length > max(iends)) {
+  #  istarts <- c(istarts, max(iends) + 1)
+  #  iends <- c(iends, allele_length)
+  #  indices <- c(indices, allele_length + 1)
+  # }
+
+  aln$aln_dt[, bin := (pa_pos - 1) %/% bin_size]
+  aln$aln_dt[, bin := bin + 1, by = bin]
+  if (nrow(aln$aln_dt[bin == max(bin)]) < bin_size) {
+    aln$aln_dt[bin == max(bin), bin := max(bin) - 1]
+  }
+
+  # bin_dt <- data.table(
+  #  seqnames = allele, start = istarts, end = iends, bin = indices
+  # )
+  # bin_dt[, end := ifelse(end > allele_length, allele_length, end)]
+  aln$aln_dt[, ":="(
+    a1_start = min(a1_pos),
+    a1_end = max(a1_pos),
+    a2_start = min(a2_pos),
+    a2_end = max(a2_pos)
+  ), by = bin]
+  bin_dt <- unique(aln$aln_dt, by = "bin")
+
+  list(
+    a1_bin = bin_dt[, c("a1_seqnames", "a1_start", "a1_end", "bin")],
+    a2_bin = bin_dt[, c("a2_seqnames", "a2_start", "a2_end", "bin")]
+  )
+}
+
 bin_allele_cov <- function(cov_dt, bin_dt) {
+  names(bin_dt) <- gsub("^.*_", "", names(bin_dt))
   # make granges for allele coverage dt and bins
   tmp_gr <- GenomicRanges::makeGRangesFromDataFrame(
     cov_dt,
@@ -621,9 +679,9 @@ call_hla_loh <- function(
 
   report <- init_loh_report(a1, a2)
 
-  hla_seq <- read.fasta(hlaref)
-  a1_seq <- hla_seq[[a1]]
-  a2_seq <- hla_seq[[a2]]
+  # hla_seq <- read.fasta(hlaref)
+  # a1_seq <- hla_seq[[a1]]
+  # a2_seq <- hla_seq[[a2]]
   n_seq_depth <- estimate_dp(bam = nbam, alleles = c(a1, a2))
   t_seq_depth <- estimate_dp(bam = tbam, alleles = c(a1, a2))
   dp_info <- list(n_seq_depth = n_seq_depth, t_seq_depth = t_seq_depth)
@@ -632,7 +690,8 @@ call_hla_loh <- function(
     "[INFO] Align sequences between ", alleles_str,
     sep = ""
   ))
-  mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
+  # mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
+  mm <- get_mismatches_bw_alleles(a1, a2, hlaref)
   if (is.null(mm)) {
     print("[INFO] no call will be made. Move to the next HLA gene")
     return(report)
@@ -640,16 +699,17 @@ call_hla_loh <- function(
   report$Num_MM <- length(mm$diffSeq1)
 
   print("[INFO] Make bins accounting for alignment start position")
-  a1_bin_dt <- make_bins(
-    allele = a1,
-    aln = mm$a1,
-    allele_length = length(a1_seq)
-  )
-  a2_bin_dt <- make_bins(
-    allele = a2,
-    aln = mm$a2,
-    allele_length = length(a2_seq)
-  )
+  # a1_bin_dt <- make_bins(
+  #  allele = a1,
+  #  aln = mm$a1,
+  #  allele_length = mm$a1$len
+  # )
+  # a2_bin_dt <- make_bins(
+  #  allele = a2,
+  #  aln = mm$a2,
+  #  allele_length = mm$a2$len
+  # )
+  bins <- make_bins(aln = mm)
 
   t_a1_cov <- extract_allele_coverage(allele = a1, bam = tbam, hlaref = hlaref)
   t_a2_cov <- extract_allele_coverage(allele = a2, bam = tbam, hlaref = hlaref)
@@ -664,7 +724,6 @@ call_hla_loh <- function(
   capture_bias <- estimate_capture_bias(
     n_a1_cov = n_a1_cov, n_a2_cov = n_a2_cov, aln = mm$aln_dt
   )
-  print(capture_bias)
   if (nrow(n_a1_cov) == 0 || nrow(n_a2_cov) == 0) {
     print("[INFO] Found no coverage for either allele in normal")
     print("[INFO] Move to next HLA gene")
@@ -676,7 +735,7 @@ call_hla_loh <- function(
   ))
   a1_cov_dt <- prep_allelic_cov(
     t_dt = t_a1_cov, n_dt = n_a1_cov,
-    bin_dt = a1_bin_dt, multfactor = multfactor
+    bin_dt = bins$a1_bin, multfactor = multfactor
   )
   names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
   print(paste(
@@ -685,9 +744,10 @@ call_hla_loh <- function(
   ))
   a2_cov_dt <- prep_allelic_cov(
     t_dt = t_a2_cov, n_dt = n_a2_cov,
-    bin_dt = a2_bin_dt, multfactor = multfactor
+    bin_dt = bins$a2_bin, multfactor = multfactor
   )
   names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
+
   report$HLA_A1_Median_LogR <- median(a1_cov_dt$a1_logR, na.rm = TRUE)
   report$HLA_A2_Median_LogR <- median(a2_cov_dt$a2_logR, na.rm = TRUE)
   report$HLA_A1_MM_Median_LogR <- median(
