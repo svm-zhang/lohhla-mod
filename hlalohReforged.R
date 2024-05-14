@@ -197,17 +197,17 @@ get_mismatches_bw_alleles <- function(a1_seq, a2_seq) {
   p_aln[, a2_ref := unlist(strsplit(as.character(a2_aln), split = ""))]
   p_aln <- p_aln[a1_ref != "-" & a2_ref != "-"]
   setnames(p_aln, c("pos.x", "pos.y"), c("a1_pos", "a2_pos"))
-  diffSeq1 <- nrow(p_aln[a1_ref != a2_ref]$a1_pos)
-  diffSeq2 <- nrow(p_aln[a1_ref != a2_ref]$a2_pos)
+  diffSeq1 <- p_aln[a1_ref != a2_ref]$a1_pos
+  diffSeq2 <- p_aln[a1_ref != a2_ref]$a2_pos
 
-  if (length(diffSeq1) == 0) {
+  if (length(diffSeq1) <= 5) {
     print("[INFO] Found insufficient num mismatches between the two alleles")
     return(NULL)
   }
   list(
     aln_dt = p_aln,
-    diffSeq1 = p_aln[a1_ref != a2_ref]$a1_pos,
-    diffSeq2 = p_aln[a1_ref != a2_ref]$a2_pos,
+    diffSeq1 = diffSeq1,
+    diffSeq2 = diffSeq2,
     a1 = list(start = a1_aln_start, end = a1_aln_end),
     a2 = list(start = a2_aln_start, end = a2_aln_end)
   )
