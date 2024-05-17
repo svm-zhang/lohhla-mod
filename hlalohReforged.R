@@ -912,5 +912,5 @@ loh_res_dt <- alleles_dt[, call_hla_loh(
   min_dp = args$min_cov, min_necnt = args$min_nm,
   tid = tid, nid = nid
 ), by = "HLAGene"]
-out_res <- file.path(args$outdir, paste(tid, ".loh.res.tsv", sep = ""))
+out_res <- file.path(args$outdir, paste(args$subject, ".loh.res.tsv", sep = ""))
 fwrite(loh_res_dt, out_res, sep = "\t", row.names = FALSE, quote = FALSE)
