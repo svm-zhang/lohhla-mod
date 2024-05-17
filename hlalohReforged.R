@@ -594,8 +594,9 @@ estimate_baf <- function(mm_dt, capture_bias) {
     print("[WARN] Found mismatch sites with corrected BAF larger than 1")
     print(mm_dt[baf_correct > 1])
     print("[WARN] Please check if two alleles have consistent coverage")
-    print("[WARN] Skip these sites for estimating copy number")
+    print("[WARM] Force setting BAF to 1")
   }
+  mm_dt[, baf_correct := ifelse(baf_correct > 1, 1, baf_correct)]
   mm_dt
 }
 
