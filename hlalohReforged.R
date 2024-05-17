@@ -146,21 +146,6 @@ extract_rgsm_from_bam_header <- function(bam) {
   sm
 }
 
-# paste_vector <- function(v, sep = "") {
-#  vt <- v[1]
-#  if (length(v) > 1) {
-#    for (g in 2:length(v)) {
-#      vt <- paste(vt, v[g], sep = sep)
-#    }
-#  }
-#  vt <- paste(vt, " EnD", sep = "")
-#  out_v <- sub(" EnD", "", vt)
-#  out_v <- sub("NA , ", "", out_v)
-#  out_v <- sub(" , NA", "", out_v)
-#  out_v <- sub(" , NA , ", " , ", out_v)
-#  out_v
-# }
-
 # https://rdrr.io/bioc/Biostrings/src/R/PairwiseAlignments-io.R
 # using .pre2postaligned function in writePariwiseAlignments function
 extract_aln_in_pos <- function(axset) {
@@ -175,9 +160,6 @@ get_mismatches_bw_alleles <- function(a1, a2, hlaref) {
   hla_seq <- read.fasta(hlaref)
   a1_seq <- hla_seq[[a1]]
   a2_seq <- hla_seq[[a2]]
-  # a1_seq <- paste_vector(toupper(a1_seq), sep = "")
-  # print(length(a1_seq))
-  # a2_seq <- paste_vector(toupper(a2_seq), sep = "")
   sigma <- nucleotideSubstitutionMatrix(
     match = 2, mismatch = -1, baseOnly = TRUE
   )
@@ -461,40 +443,12 @@ make_bins_old <- function(allele, aln, allele_length, bin_size = 150) {
 }
 
 make_bins <- function(aln, bin_size = 150) {
-  # start_pos <- min(aln$aln_dt$pa_pos)
-  # end_pos <- max(aln$aln_dt$pa_pos)
-  # bin_breaks <- seq(start_pos, end_pos, by = bin_size)
-  ## the last bin can be less than 150, so merged with second last bin
-  ## end_pos + 2 was from original code
-  # bin_breaks <- c(bin_breaks[-length(bin_breaks)], end_pos + 2)
-  # istarts <- bin_breaks[-length(bin_breaks)]
-  ## this makes sure no end position of last bin not repeating as
-  ## start position in the next bin
-  # istarts[2:length(istarts)] <- istarts[2:length(istarts)] + 1
-  # iends <- bin_breaks[2:length(bin_breaks)]
-  # indices <- seq(1, length(istarts))
-
-  # if (start_pos > 2) {
-  #  istarts <- c(1, istarts)
-  #  iends <- c(start_pos - 1, iends)
-  #  indices <- c(0, indices)
-  # }
-  # if (allele_length > max(iends)) {
-  #  istarts <- c(istarts, max(iends) + 1)
-  #  iends <- c(iends, allele_length)
-  #  indices <- c(indices, allele_length + 1)
-  # }
-
   aln$aln_dt[, bin := (pa_pos - 1) %/% bin_size]
   aln$aln_dt[, bin := bin + 1, by = bin]
   if (nrow(aln$aln_dt[bin == max(bin)]) < bin_size) {
     aln$aln_dt[bin == max(bin), bin := max(bin) - 1]
   }
 
-  # bin_dt <- data.table(
-  #  seqnames = allele, start = istarts, end = iends, bin = indices
-  # )
-  # bin_dt[, end := ifelse(end > allele_length, allele_length, end)]
   aln$aln_dt[, ":="(
     a1_start = min(a1_pos),
     a1_end = max(a1_pos),
@@ -685,9 +639,6 @@ call_hla_loh <- function(
 
   report <- init_loh_report(a1, a2)
 
-  # hla_seq <- read.fasta(hlaref)
-  # a1_seq <- hla_seq[[a1]]
-  # a2_seq <- hla_seq[[a2]]
   n_seq_depth <- estimate_dp(bam = nbam, alleles = c(a1, a2))
   t_seq_depth <- estimate_dp(bam = tbam, alleles = c(a1, a2))
   dp_info <- list(n_seq_depth = n_seq_depth, t_seq_depth = t_seq_depth)
@@ -696,7 +647,6 @@ call_hla_loh <- function(
     "[INFO] Align sequences between ", alleles_str,
     sep = ""
   ))
-  # mm <- get_mismatches_bw_alleles(a1_seq, a2_seq)
   mm <- get_mismatches_bw_alleles(a1, a2, hlaref)
   if (is.null(mm)) {
     print("[INFO] no call will be made. Move to the next HLA gene")
@@ -705,16 +655,6 @@ call_hla_loh <- function(
   report$Num_MM <- length(mm$diffSeq1)
 
   print("[INFO] Make bins accounting for alignment start position")
-  # a1_bin_dt <- make_bins(
-  #  allele = a1,
-  #  aln = mm$a1,
-  #  allele_length = mm$a1$len
-  # )
-  # a2_bin_dt <- make_bins(
-  #  allele = a2,
-  #  aln = mm$a2,
-  #  allele_length = mm$a2$len
-  # )
   bins <- make_bins(aln = mm)
   report$Num_Bins <- nrow(bins$a1_bin)
 
@@ -763,9 +703,6 @@ call_hla_loh <- function(
   ),
   .SDcols = c("a1_bin_t_dp", "a1_bin_n_dp", "a2_bin_t_dp", "a2_bin_n_dp")
   ]
-  # bin_dt[, capture_bias_bin := a1_bin_n_dp / a2_bin_n_dp]
-  # capture_bias <- median(bin_dt$capture_bias_bin, na.rm = TRUE)
-  # print(capture_bias)
   setkey(bin_dt, bin)
 
   mm_dt <- prep_mm_cov(mm = mm, a1_dt = a1_cov_dt, a2_dt = a2_cov_dt)
