@@ -1,0 +1,43 @@
+context:
+  version: "0.1"
+  name: hlalohreforged
+
+package:
+  name: "{{ name }}"
+  version: "{{ version }}"
+
+source:
+  - path: .
+  - path: ./R
+
+build:
+  number: 1
+  string: "linux86"
+  skip:
+    - win
+
+requirements:
+  host:
+    - r-base >=4.1
+  run:
+    - r-base >=4.1
+    - r-argparse
+    - r-data.table
+    - r-ggplot2 >=3.4.0
+    - r-splitstackshape ==1.4.8
+    - r-r.utils
+    - r-seqinr
+    - bioconductor-biostrings
+    - bioconductor-rsamtools >=2.10.0
+    - samtools >=1.13
+
+test:
+  exists:
+    bin:
+    - hlalohReforged
+    - hlalohplot
+    - samtools
+
+extra:
+  maintainers:
+    - Simo V. Zhang (svm.zhang@gmail.com)
