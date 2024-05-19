@@ -728,77 +728,148 @@ make_bins_old <- function(allele, aln, allele_length, bin_size = 150) {
 #  report
 # }
 
-pkg_name <- "hlalohReforged"
-libpaths <- file.path(.libPaths(), pkg_name)
-lib_pattern <- "(bamer|cli|loh|pairwise_aln|pathio).R"
-rscripts <- list.files(libpaths, lib_pattern, full.names = TRUE, recursive = TRUE)
-if (length(rscripts) == 0) {
-  print("[ERROR] Found no related R script libraries to run hlalohReforged")
-  quit(status = 1)
-}
-invisible(sapply(rscripts, source))
-
-gamma <- 1
-
-args <- parse_cmd()
-
-parse_file_path(file = args$tbam)
-parse_file_path(file = args$nbam)
-parse_dir_path(dir = args$outdir, create = TRUE)
-
-tid <- extract_rgsm_from_bam_header(bam = args$tbam)
-nid <- extract_rgsm_from_bam_header(bam = args$nbam)
-
-purity <- 0.5
-ploidy <- 2
-if (!is.null(args$tstates)) {
-  tstates <- extract_tstates(tstate_est_file = args$tstates)
-  if (!is.na(tstates$ploidy) && !is.na(tstates$purity)) {
-    ploidy <- tstates$ploidy
-    purity <- tstates$purity
+initialize_libs <- function() {
+  pkg_name <- "hlalohReforged"
+  libpaths <- file.path(.libPaths(), pkg_name)
+  lib_pattern <- "(bamer|cli|loh|pairwise_aln|pathio).R"
+  rscripts <- list.files(libpaths, lib_pattern, full.names = TRUE, recursive = TRUE)
+  if (length(rscripts) == 0) {
+    print("[ERROR] Found no related R script libraries to run hlalohReforged")
+    quit(status = 1)
   }
-}
-print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
-
-alleles_n <- extract_seqinfo_from_bam(bam = args$nbam)
-alleles_t <- extract_seqinfo_from_bam(bam = args$tbam)
-# extract function returns named integer vector
-# here we need names of that vector to get allele name
-alleles_n <- sort(names(alleles_n))
-alleles_t <- sort(names(alleles_t))
-if (!all.equal(alleles_n, alleles_t)) {
-  print("[ERROR] Different set of alleles detected in normal and tumor BAMs")
-  print("[ERROR] Alleles in normal BAM: ", paste(alleles_n, collapse = "|"))
-  print("[ERROR] Alleles in tumor BAM: ", paste(alleles_t, collapse = "|"))
-  quit(status = 1)
+  invisible(sapply(rscripts, source))
 }
 
-alleles_dt <- data.table(Alleles = alleles_n)
-alleles_dt[, HLAGene := tstrsplit(Alleles, "_", keep = 2)]
-alleles_dt[, HLAGene := paste("hla_", HLAGene, sep = "")]
-alleles_dt[, Alleles := paste(Alleles, collapse = ","), by = HLAGene]
-alleles_dt[, c("A1", "A2") := tstrsplit(Alleles, ","), by = HLAGene]
-alleles_dt[, Alleles := NULL]
-alleles_dt <- unique(alleles_dt, by = "HLAGene")
+main <- function() {
+  initialize_libs()
 
-# filter input bams by ecnt
-filt_nbam <- file.path(args$outdir, paste(nid, ".filt.bam", sep = ""))
-filt_tbam <- file.path(args$outdir, paste(tid, ".filt.bam", sep = ""))
-if (!file.exists(filt_nbam) || !file.exists(filt_tbam)) {
-  filter_bam_by_ecnt(
-    bam = args$nbam, obam = filt_nbam, min_necnt = args$min_necnt
-  )
-  filter_bam_by_ecnt(
-    bam = args$tbam, obam = filt_tbam, min_necnt = args$min_necnt
-  )
+  gamma <- 1
+
+  args <- parse_cmd()
+
+  parse_file_path(file = args$tbam)
+  parse_file_path(file = args$nbam)
+  parse_dir_path(dir = args$outdir, create = TRUE)
+
+  tid <- extract_rgsm_from_bam_header(bam = args$tbam)
+  nid <- extract_rgsm_from_bam_header(bam = args$nbam)
+
+  purity <- 0.5
+  ploidy <- 2
+  if (!is.null(args$tstates)) {
+    tstates <- extract_tstates(tstate_est_file = args$tstates)
+    if (!is.na(tstates$ploidy) && !is.na(tstates$purity)) {
+      ploidy <- tstates$ploidy
+      purity <- tstates$purity
+    }
+  }
+  print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
+
+  alleles_n <- extract_seqinfo_from_bam(bam = args$nbam)
+  alleles_t <- extract_seqinfo_from_bam(bam = args$tbam)
+  # extract function returns named integer vector
+  # here we need names of that vector to get allele name
+  alleles_n <- sort(names(alleles_n))
+  alleles_t <- sort(names(alleles_t))
+  if (!all.equal(alleles_n, alleles_t)) {
+    print("[ERROR] Different set of alleles detected in normal and tumor BAMs")
+    print("[ERROR] Alleles in normal BAM: ", paste(alleles_n, collapse = "|"))
+    print("[ERROR] Alleles in tumor BAM: ", paste(alleles_t, collapse = "|"))
+    quit(status = 1)
+  }
+
+  alleles_dt <- data.table(Alleles = alleles_n)
+  alleles_dt[, HLAGene := tstrsplit(Alleles, "_", keep = 2)]
+  alleles_dt[, HLAGene := paste("hla_", HLAGene, sep = "")]
+  alleles_dt[, Alleles := paste(Alleles, collapse = ","), by = HLAGene]
+  alleles_dt[, c("A1", "A2") := tstrsplit(Alleles, ","), by = HLAGene]
+  alleles_dt[, Alleles := NULL]
+  alleles_dt <- unique(alleles_dt, by = "HLAGene")
+
+  # filter input bams by ecnt
+  filt_nbam <- file.path(args$outdir, paste(nid, ".filt.bam", sep = ""))
+  filt_tbam <- file.path(args$outdir, paste(tid, ".filt.bam", sep = ""))
+  if (!file.exists(filt_nbam) || !file.exists(filt_tbam)) {
+    filter_bam_by_ecnt(
+      bam = args$nbam, obam = filt_nbam, min_necnt = args$min_necnt
+    )
+    filter_bam_by_ecnt(
+      bam = args$tbam, obam = filt_tbam, min_necnt = args$min_necnt
+    )
+  }
+
+  loh_res_dt <- alleles_dt[, call_hla_loh(
+    .SD,
+    tbam = filt_tbam, nbam = filt_nbam, hlaref = args$hlaref,
+    outdir = args$outdir, purity = purity, ploidy = ploidy,
+    min_dp = args$min_cov, min_necnt = args$min_nm
+  ), by = "HLAGene"]
+  out_res <- file.path(args$outdir, paste(args$subject, ".loh.res.tsv", sep = ""))
+  fwrite(loh_res_dt, out_res, sep = "\t", row.names = FALSE, quote = FALSE)
 }
 
-loh_res_dt <- alleles_dt[, call_hla_loh(
-  .SD,
-  tbam = filt_tbam, nbam = filt_nbam, hlaref = args$hlaref,
-  outdir = args$outdir, purity = purity, ploidy = ploidy,
-  min_dp = args$min_cov, min_necnt = args$min_nm,
-  tid = tid, nid = nid
-), by = "HLAGene"]
-out_res <- file.path(args$outdir, paste(args$subject, ".loh.res.tsv", sep = ""))
-fwrite(loh_res_dt, out_res, sep = "\t", row.names = FALSE, quote = FALSE)
+main()
+# gamma <- 1
+#
+# args <- parse_cmd()
+#
+# parse_file_path(file = args$tbam)
+# parse_file_path(file = args$nbam)
+# parse_dir_path(dir = args$outdir, create = TRUE)
+#
+# tid <- extract_rgsm_from_bam_header(bam = args$tbam)
+# nid <- extract_rgsm_from_bam_header(bam = args$nbam)
+#
+# purity <- 0.5
+# ploidy <- 2
+# if (!is.null(args$tstates)) {
+#  tstates <- extract_tstates(tstate_est_file = args$tstates)
+#  if (!is.na(tstates$ploidy) && !is.na(tstates$purity)) {
+#    ploidy <- tstates$ploidy
+#    purity <- tstates$purity
+#  }
+# }
+# print(paste("[INFO] Purity = ", purity, " Ploidy = ", ploidy, sep = ""))
+#
+# alleles_n <- extract_seqinfo_from_bam(bam = args$nbam)
+# alleles_t <- extract_seqinfo_from_bam(bam = args$tbam)
+## extract function returns named integer vector
+## here we need names of that vector to get allele name
+# alleles_n <- sort(names(alleles_n))
+# alleles_t <- sort(names(alleles_t))
+# if (!all.equal(alleles_n, alleles_t)) {
+#  print("[ERROR] Different set of alleles detected in normal and tumor BAMs")
+#  print("[ERROR] Alleles in normal BAM: ", paste(alleles_n, collapse = "|"))
+#  print("[ERROR] Alleles in tumor BAM: ", paste(alleles_t, collapse = "|"))
+#  quit(status = 1)
+# }
+#
+# alleles_dt <- data.table(Alleles = alleles_n)
+# alleles_dt[, HLAGene := tstrsplit(Alleles, "_", keep = 2)]
+# alleles_dt[, HLAGene := paste("hla_", HLAGene, sep = "")]
+# alleles_dt[, Alleles := paste(Alleles, collapse = ","), by = HLAGene]
+# alleles_dt[, c("A1", "A2") := tstrsplit(Alleles, ","), by = HLAGene]
+# alleles_dt[, Alleles := NULL]
+# alleles_dt <- unique(alleles_dt, by = "HLAGene")
+#
+## filter input bams by ecnt
+# filt_nbam <- file.path(args$outdir, paste(nid, ".filt.bam", sep = ""))
+# filt_tbam <- file.path(args$outdir, paste(tid, ".filt.bam", sep = ""))
+# if (!file.exists(filt_nbam) || !file.exists(filt_tbam)) {
+#  filter_bam_by_ecnt(
+#    bam = args$nbam, obam = filt_nbam, min_necnt = args$min_necnt
+#  )
+#  filter_bam_by_ecnt(
+#    bam = args$tbam, obam = filt_tbam, min_necnt = args$min_necnt
+#  )
+# }
+#
+# loh_res_dt <- alleles_dt[, call_hla_loh(
+#  .SD,
+#  tbam = filt_tbam, nbam = filt_nbam, hlaref = args$hlaref,
+#  outdir = args$outdir, purity = purity, ploidy = ploidy,
+#  min_dp = args$min_cov, min_necnt = args$min_nm,
+#  tid = tid, nid = nid
+# ), by = "HLAGene"]
+# out_res <- file.path(args$outdir, paste(args$subject, ".loh.res.tsv", sep = ""))
+# fwrite(loh_res_dt, out_res, sep = "\t", row.names = FALSE, quote = FALSE)
