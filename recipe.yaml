@@ -1,5 +1,5 @@
 context:
-  version: "0.1"
+  version: 0.1
   name: hlalohreforged
 
 package:
@@ -12,7 +12,7 @@ source:
 
 build:
   number: 1
-  string: "linux86"
+  string: "stable"
   skip:
     - win
 
@@ -28,15 +28,15 @@ requirements:
     - r-r.utils
     - r-seqinr
     - bioconductor-biostrings
-    - bioconductor-rsamtools >=2.10.0
-    - samtools >=1.13
+    - bioconductor-rsamtools
+    - samtools
 
 test:
   exists:
     bin:
-    - hlalohReforged
-    - hlalohplot
-    - samtools
+      - hlalohReforged
+      - hlalohplot
+      - samtools
 
 extra:
   maintainers:
