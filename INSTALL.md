@@ -15,7 +15,7 @@ Start a new shell session after the installation finishes. `mamba` binary now sh
 mamba -h
 ```
 
-Before we move onto the next step, it is recommended to set up the `CONDA_BLD_PATH` environment variable, and it is preferrable to set it in your `.bash_profile` like below. This gives `boa` a default location to output packages (see `--output-folder` option in `boa build` command). 
+Before moving onto the next step, it is recommended to set up the `CONDA_BLD_PATH` environment variable, and it is preferrable to set it in your `.bash_profile` like below. This gives `boa` a default location to output packages (see `--output-folder` option in `boa build` command). 
 
 ```
 echo "export CONDA_BLD_PATH=${MINIFORGE3_PREFIX}/conda-bld" >> ~/.bash_profile
