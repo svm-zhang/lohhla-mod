@@ -5,13 +5,32 @@ To install mamba, please follow the [instruction](https://github.com/conda-forge
 
 ```
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-bash Miniforge3-$(uname)-$(uname -m).sh)
+
+bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-Once the installation finishes, start a new shell session and `mamba` binary should be accessible. Next, install `boa` by running:
+Start a new shell session after the installation finishes. `mamba` binary now should be accessible and you should be able to run:
+
+```
+mamba -h
+```
+
+Before we move onto the next step, it is recommended to set up the `CONDA_BLD_PATH` environment variable, and it is preferrable to set it in your `.bash_profile` like below. This gives `boa` a default location to output packages (see `--output-folder` option in `boa build` command). 
+
+```
+echo "export CONDA_BLD_PATH=${MINIFORGE3_PREFIX}/conda-bld" >> ~/.bash_profile
+```
+
+Now simply install `boa`:
 
 ```
 mamba install boa -c conda-forge
+```
+
+if you do not have `git` installed at this moment,
+
+```
+mamba install git
 ```
 
 ## Linux (linux-64)
@@ -30,15 +49,9 @@ cd hlalohReforged
 boa build . 
 ```
 
-`boa`, by default, should output the package tarball under `${MINIFORGE3_PREFIX}/conda-bld/linux-64`. `${MINIFORGE3_PREFIX}` is where Miniforge3 is installed, and `linux-64` is the target-platform.
+`boa`, by default, should output the package tarball under `${MINIFORGE3_PREFIX}/conda-bld/linux-64`. `${MINIFORGE3_PREFIX}` is where Miniforge3 is installed, and `linux-64` is the target-platform. `linux-64` should be the most common architecture used in the bioinfo field. __Other linux architecture platform is not supported__.
 
-If it is not there, please check the environment variable `$CONDA_BLD_PATH`. To set it to where the installation location of Miniforge3, simply do:
-
-```
-echo "export CONDA_BLD_PATH=${MINIFORGE3_PREFIX}/conda-bld" >> ~/.bash_profile
-```
-
-Next, build a conda environment to run `hlalohReforged` using mamba:
+Next, build a conda environment and install the `hlalohreforged` package you just build using mamba:
 
 ```
 mamba create -n hlalohreforged      # create an environment
@@ -55,7 +68,26 @@ mamba activate hlalohreforged
 hlalohReforged -h
 ```
 
-The last command should print out the help message when everything works as expected.
+Upon successful installation, you should be prompted with help message like below:
+
+```
+usage: /home/simo/opt/miniforge3/envs/lohreforged/bin/hlalohReforged
+       [-h] --subject STR --tbam FILE --nbam FILE --hlaref FILE
+       [--tstates FILE] --outdir DIR [--min_cov INT] [--min_necnt INT]
+       [--threads INT]
+
+options:
+  -h, --help       show this help message and exit
+  --subject STR    Specify the subject ID
+  --tbam FILE      Specify the tumor bam file
+  --nbam FILE      Specify the normal bam file
+  --hlaref FILE    Specify HLA reference sequence
+  --tstates FILE   Specify file includeing tumor purity and ploidy
+  --outdir DIR     Specify the output directory
+  --min_cov INT    Specify the minimum coverage at mismatch sites (30)
+  --min_necnt INT  Specify the minimum number of diff events allowed for reads
+                   mapping to HLA alleles (1)
+```
 
 ## MacOS (osx-arm64, bash)
 
