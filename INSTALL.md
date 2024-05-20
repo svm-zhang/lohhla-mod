@@ -8,7 +8,7 @@ curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Mi
 bash Miniforge3-$(uname)-$(uname -m).sh)
 ```
 
-Once the installation finishes, start a new shell session and `mamba` binary should be accessible. Next, install `boa` following the [instruction](https://boa-build.readthedocs.io/en/latest/getting_started.html#installation):
+Once the installation finishes, start a new shell session and `mamba` binary should be accessible. Next, install `boa` by running:
 
 ```
 mamba install boa -c conda-forge
@@ -30,7 +30,9 @@ cd hlalohReforged
 boa build . 
 ```
 
-`boa`, by default, should output the package tarbar under `${MINIFORGE3_PREFIX}/conda-bld/linux-64`. If it is not there, please check the environment variable `$CONDA_BLD_PATH`. To set it to where the installation location of Miniforge3, simply do:
+`boa`, by default, should output the package tarball under `${MINIFORGE3_PREFIX}/conda-bld/linux-64`. `${MINIFORGE3_PREFIX}` is where Miniforge3 is installed, and `linux-64` is the target-platform.
+
+If it is not there, please check the environment variable `$CONDA_BLD_PATH`. To set it to where the installation location of Miniforge3, simply do:
 
 ```
 echo "export CONDA_BLD_PATH=${MINIFORGE3_PREFIX}/conda-bld" >> ~/.bash_profile
@@ -41,7 +43,7 @@ Next, build a conda environment to run `hlalohReforged` using mamba:
 ```
 mamba create -n hlalohreforged      # create an environment
 
-mamba install -n hlalohreforged --use-local hlalohreforged
+mamba install -n hlalohreforged --use-local hlalohreforged      # hlalohreforged is a local package
 
 ```
 
@@ -56,5 +58,20 @@ hlalohReforged -h
 The last command should print out the help message when everything works as expected.
 
 ## MacOS (osx-arm64)
+
+The general processing of building `hlaohreforged` on MacOS is similar as above. The only difference is that we need to tell `boa` to use `osx-64` as the target platform, rather than `osx-arm64`. This is because `bioconda` does not support `osx-arm64` yet. First, run the following command to make `osx-64` subdirectory.
+
+```
+conda config --env --set subdir osx-64
+```
+
+Then, we specify target platform in `boa build` command.
+
+```
+boa build --target-platform osx-64 . 
+
+```
+
+All other steps follow the same procedure as decribed in the Linux section above.
 
 
