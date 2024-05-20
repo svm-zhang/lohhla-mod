@@ -6,8 +6,8 @@ mkdir -p "$PREFIX/bin"
 mkdir -p "$PREFIX/lib/R/library/hlalohReforged"
 
 # copy scripts to bin folder
-cp "$RECIPE_DIR/hlalohReforged.R" "$PREFIX/bin/hlalohReforged"
-cp "$RECIPE_DIR/plot.R" "$PREFIX/bin/hlalohplot"
+cp "$RECIPE_DIR/R/hlalohReforged.R" "$PREFIX/bin/hlalohReforged"
+cp "$RECIPE_DIR/R/plot.R" "$PREFIX/bin/hlalohplot"
 
 # make it executable
 chmod +x "$PREFIX"/bin/*
