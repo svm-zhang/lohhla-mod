@@ -14,9 +14,12 @@ build:
   number: 1
   string: "stable"
   skip:
+    - aarch64
     - win
 
 requirements:
+  build:
+    - git
   host:
     - r-base >=4.1
   run:
