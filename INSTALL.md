@@ -57,7 +57,7 @@ hlalohReforged -h
 
 The last command should print out the help message when everything works as expected.
 
-## MacOS (osx-arm64)
+## MacOS (osx-arm64, bash)
 
 The general processing of building `hlaohreforged` on MacOS is similar as above. The only difference is that we need to tell `boa` to use `osx-64` as the target platform, rather than `osx-arm64`. This is because `bioconda` does not support `osx-arm64` yet. First, run the following command to make `osx-64` subdirectory.
 
@@ -74,4 +74,12 @@ boa build --target-platform osx-64 .
 
 All other steps follow the same procedure as decribed in the Linux section above.
 
+## Manual
 
+It is possible to install `hlalohReforged` without any package manager and builder. The `recipe.yaml` file defines run-time dependencies. You can install them on your local machine/environment as you see fit. Once everything installed, you need to set one more environment variable to run `hlalohReforge`:
+
+```
+export R_LIBS=${Path to the parent directory of hlalohReforged repo}:$R_LIBS
+```
+
+You can also set this in your `~/.bash_profile` file. 
