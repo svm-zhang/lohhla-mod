@@ -2,7 +2,7 @@
 
 ## Case: Non-LOH
 
-## Case: 1/0;2/1;3/1
+## Case: 1/0;1/1;3/1
 
 ```
 dwgsim -d 300 -s 20 -N 10000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.00109 -E 0.00109 s6.n.hla.fasta s6.n
@@ -19,5 +19,13 @@ dwgsim -d 280 -s 20 -N 200 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.002 -E 0.002 
 ```
 
 ```
-hlalohReforged --tbam s6_t.hla.realn.so.rg.mdup.bam --nbam s6_n.hla.realn.ready.bam s6_n.hla.fasta --tstates tstates.tsv --outdir $PWD --subject s6 --min_necnt 2 --corrector global
+hlalohReforged --tbam s6_t.hla.realn.ready.bam --nbam s6_n.hla.realn.ready.bam s6_n.hla.fasta --tstates tstates.tsv --outdir $PWD --subject s6 --min_necnt 2 --corrector global
 ```
+
+## Case: 1/1;2/1;0/0
+
+Simulate a case where HLA-C gene locus is entirely deleted
+```
+hlalohReforged --tbam s7_t.hla.realn.ready.bam --nbam s7_n.hla.realn.ready.bam s7_n.hla.fasta --tstates tstates.tsv --outdir $PWD --subject s7 --min_necnt 2 --corrector global
+```
+
