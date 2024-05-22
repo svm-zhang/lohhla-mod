@@ -223,14 +223,14 @@ estimate_dp <- function(bam, alleles) {
 }
 
 dump_intermedia_tables <- function(
-    out, dp_info, mm,
+    out, corrector, mm,
     cov_dt, bin_dt = NULL, mm_dt = NULL) {
   to_save <- list(
     mm = mm,
     cov_dt = cov_dt,
     bin_dt = bin_dt,
     mm_dt = mm_dt,
-    dp_info = dp_info
+    corrector = corrector
   )
   saveRDS(to_save, out)
 }
@@ -260,7 +260,7 @@ init_loh_report <- function(a1, a2) {
 
 call_hla_loh <- function(
     dt, tbam, nbam, hlaref, outdir,
-    purity, ploidy, min_dp, min_necnt, gamma = 1) {
+    purity, ploidy, min_dp, min_necnt, corrector = NaN, gamma = 1) {
   a1 <- dt$A1
   a2 <- dt$A2
   alleles_str <- paste(c(a1, a2), collapse = " and ")
@@ -268,10 +268,14 @@ call_hla_loh <- function(
 
   report <- init_loh_report(a1, a2)
 
-  n_seq_depth <- estimate_dp(bam = nbam, alleles = c(a1, a2))
-  t_seq_depth <- estimate_dp(bam = tbam, alleles = c(a1, a2))
-  dp_info <- list(n_seq_depth = n_seq_depth, t_seq_depth = t_seq_depth)
-  multfactor <- n_seq_depth / t_seq_depth
+  if (is.nan(corrector)) {
+    n_seq_depth <- estimate_dp(bam = nbam, alleles = c(a1, a2))
+    t_seq_depth <- estimate_dp(bam = tbam, alleles = c(a1, a2))
+    # dp_info <- list(n_seq_depth = n_seq_depth, t_seq_depth = t_seq_depth)
+    corrector <- n_seq_depth / t_seq_depth
+    print("local")
+    print(corrector)
+  }
   print(paste(
     "[INFO] Align sequences between ", alleles_str,
     sep = ""
@@ -311,7 +315,7 @@ call_hla_loh <- function(
   ))
   a1_cov_dt <- prep_allelic_cov(
     t_dt = t_a1_cov, n_dt = n_a1_cov,
-    bin_dt = bins$a1_bin, multfactor = multfactor
+    bin_dt = bins$a1_bin, multfactor = corrector
   )
   names(a1_cov_dt) <- paste("a1_", names(a1_cov_dt), sep = "")
   print(paste(
@@ -320,12 +324,12 @@ call_hla_loh <- function(
   ))
   a2_cov_dt <- prep_allelic_cov(
     t_dt = t_a2_cov, n_dt = n_a2_cov,
-    bin_dt = bins$a2_bin, multfactor = multfactor
+    bin_dt = bins$a2_bin, multfactor = corrector
   )
   names(a2_cov_dt) <- paste("a2_", names(a2_cov_dt), sep = "")
 
   bin_dt <- estimate_binned_logr(
-    a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = multfactor
+    a1_dt = a1_cov_dt, a2_dt = a2_cov_dt, multfactor = corrector
   )
   bin_dt[, cn_loss_test_bin := apply(
     .SD, 1, test_cn_loss
@@ -394,7 +398,7 @@ call_hla_loh <- function(
   names(a2_cov_dt) <- gsub("a2_", "", names(a2_cov_dt))
   dump_intermedia_tables(
     out = out_rds,
-    dp_info = dp_info,
+    corrector = corrector,
     mm = mm,
     cov_dt = rbind(a1_cov_dt, a2_cov_dt),
     bin_dt = bin_dt,
