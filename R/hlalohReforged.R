@@ -798,11 +798,21 @@ main <- function() {
     )
   }
 
+  corrector <- NaN
+  if (args$corrector == "global") {
+    n_seq_depth <- estimate_dp(filt_nbam, alleles = alleles_n)
+    t_seq_depth <- estimate_dp(filt_tbam, alleles = alleles_n)
+    corrector <- n_seq_depth / t_seq_depth
+    print("global")
+    print(corrector)
+  }
+
   loh_res_dt <- alleles_dt[, call_hla_loh(
     .SD,
     tbam = filt_tbam, nbam = filt_nbam, hlaref = args$hlaref,
     outdir = args$outdir, purity = purity, ploidy = ploidy,
-    min_dp = args$min_cov, min_necnt = args$min_nm
+    min_dp = args$min_cov, min_necnt = args$min_nm,
+    corrector = corrector, gamma = gamma
   ), by = "HLAGene"]
   out_res <- file.path(args$outdir, paste(args$subject, ".loh.res.tsv", sep = ""))
   fwrite(loh_res_dt, out_res, sep = "\t", row.names = FALSE, quote = FALSE)
