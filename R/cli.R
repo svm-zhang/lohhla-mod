@@ -26,6 +26,11 @@ parse_cmd <- function() {
     metavar = "DIR", type = "character", required = TRUE,
     help = "Specify the output directory"
   )
+  parser$add_argument("--corrector",
+    metavar = "INT", type = "character", default = "local",
+    choices = c("local", "global"),
+    help = "Specify to use local or global corrector [local]"
+  )
   parser$add_argument("--min_cov",
     metavar = "INT", type = "integer", default = 30,
     help = "Specify the minimum coverage at mismatch sites (30)"
@@ -41,10 +46,6 @@ parse_cmd <- function() {
     metavar = "INT", type = "integer", default = 16,
     help = "Specify the number of threads (16)"
   )
-  # parser$add_argument("--example",
-  #  action = "store_true",
-  #  help = "Specify to run on example data provided by LOHHLA"
-  # )
 
   parser$parse_args()
 }
