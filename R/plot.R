@@ -177,8 +177,7 @@ plot_baf_profile <- function(mm_dt, out, mask = FALSE, height = 6, width = 12) {
 plot_profile <- function(hla_gene, dat, plot_dir) {
   mm <- dat$mm
   cov_dt <- dat$cov_dt
-  dp_info <- dat$dp_info
-  dp_corrector <- dp_info$n_seq_depth / dp_info$t_seq_depth
+  corrector <- dat$corrector
   alleles <- unique(cov_dt$seqnames)
   a1 <- alleles[1]
   a2 <- alleles[2]
@@ -196,7 +195,7 @@ plot_profile <- function(hla_gene, dat, plot_dir) {
   )
   out <- file.path(plot_dir, paste(hla_gene, ".tn_dp.pdf", sep = ""))
   plot_tn_cov_profile(
-    cov_dt = cov_dt, corrector = dp_corrector, a1 = a1, a2 = a2, out = out
+    cov_dt = cov_dt, corrector = corrector, a1 = a1, a2 = a2, out = out
   )
   out <- file.path(plot_dir, paste(hla_gene, ".logR.pdf", sep = ""))
   plot_logr_profile(
