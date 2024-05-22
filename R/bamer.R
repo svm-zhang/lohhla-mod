@@ -144,6 +144,17 @@ extract_allele_coverage <- function(allele, bam, hlaref, min_dp = 0) {
     stderr = FALSE,
     wait = TRUE
   ), select = c(1, 2, 3, 4))
+  # FIXME: should I return NULL?
+  if (nrow(dt) == 0) {
+    print(paste(
+      "[ERROR] No pileup generated for allele ",
+      allele,
+      " from bam ",
+      bam,
+      sep = ""
+    ))
+    quit(status = 1)
+  }
   names(dt) <- c("seqnames", "pos", "nucleotide", "count")
   dt <- dt[count > min_dp]
   dt
