@@ -4,6 +4,13 @@ prep_allelic_cov <- function(t_dt, n_dt, bin_dt, multfactor) {
   cov_dt <- combine_tn_cov(t_dt = t_dt, n_dt = n_dt)
   cov_dt <- bin_allele_cov(cov_dt = cov_dt, bin_dt = bin_dt)
   cov_dt <- estimate_logr(cov_dt = cov_dt, multfactor = multfactor)
+  cov_dt[, cn_loss_bin_pvalue := apply(
+    .SD, 2, t_test_with_na,
+    alternative = "less", mu = -1, return_p = TRUE
+  ),
+  .SDcols = "logR",
+  by = "bin"
+  ]
   cov_dt
 }
 
@@ -188,21 +195,33 @@ estimate_cn_conf <- function(cn_dt, which) {
     quit(status = 1)
   }
   cn_test <- t_test_with_na(cn_dt[[col]])
-  cn_est_conf <- cn_test$conf.int
-  cn_est_lower <- cn_est_conf[1]
-  cn_est_upper <- cn_est_conf[2]
+  cn_est_conf <- cn_est_lower <- cn_est_upper <- NaN
+  if (class(cn_test) == "htest") {
+    cn_est_conf <- cn_test$conf.int
+    cn_est_lower <- cn_est_conf[1]
+    cn_est_upper <- cn_est_conf[2]
+  }
   list(est_lower = cn_est_lower, est_upper = cn_est_upper)
 }
 
-t_test_with_na <- function(x, alternative = "two.sided", mu = 0) {
+t_test_with_na <- function(x, alternative = "two.sided", mu = 0, return_p = FALSE) {
+  x <- as.numeric(x)
   if (length(x[!is.na(x)]) <= 1) {
-    stat <- NA
-    ci <- c(NA, NA)
-    out <- list(stat, ci)
-    names(out) <- c("stat", "conf.int")
-    out
+    # stat <- NA
+    # ci <- c(NA, NA)
+    # out <- list(stat, ci)
+    # names(out) <- c("stat", "conf.int")
+    # out
+    if (return_p) {
+      return(NaN)
+    }
+    return(NA)
   } else {
-    t.test(x, alternative = alternative, mu = mu)
+    test <- t.test(x, alternative = alternative, mu = mu)
+    if (return_p) {
+      return(test$p.value)
+    }
+    return(test)
   }
 }
 
@@ -253,8 +272,10 @@ init_loh_report <- function(a1, a2) {
     "Median_BAF" = NaN,
     "Num_MM" = as.integer(0),
     "Num_Bins" = as.integer(0),
-    "Num_Bins_Used" = as.integer(0),
-    "Num_CN_Loss_Supporting_Bins" = as.integer(0)
+    "Num_MM_Bins" = as.integer(0),
+    "Num_A1_Loss_Supporting_Bins" = as.integer(0),
+    "Num_A2_Loss_Supporting_Bins" = as.integer(0),
+    "Num_CN_Diff_Supporting_Bins" = as.integer(0)
   )
 }
 
@@ -362,7 +383,7 @@ call_hla_loh <- function(
   ]
   # FIXME: I should get this right after finished making bins
   bins_no_mm <- bin_dt$bin[which(!bin_dt$bin %in% unique(mm_dt$bin))]
-  report$Num_Bins_Used <- report$Num_Bins - length(bins_no_mm)
+  report$Num_MM_Bins <- report$Num_Bins - length(bins_no_mm)
   report$HLA_A1_Median_LogR <- median(
     a1_cov_dt[!a1_bin %in% bins_no_mm]$a1_logR,
     na.rm = TRUE
@@ -386,7 +407,13 @@ call_hla_loh <- function(
   report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
   report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
   bin_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_dt]
-  report$Num_CN_Loss_Supporting_Bins <- nrow(
+  report$Num_A1_Loss_Supporting_Bins <- nrow(
+    bin_dt[a1_cn_loss_bin_pvalue <= 0.01 & !bin %in% bins_no_mm]
+  )
+  report$Num_A2_Loss_Supporting_Bins <- nrow(
+    bin_dt[a2_cn_loss_bin_pvalue <= 0.01 & !bin %in% bins_no_mm]
+  )
+  report$Num_CN_Diff_Supporting_Bins <- nrow(
     bin_dt[cn_loss_test_bin <= 0.01 & !bin %in% bins_no_mm]
   )
   rm(cn_dt)
