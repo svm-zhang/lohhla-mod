@@ -207,22 +207,17 @@ estimate_cn_conf <- function(cn_dt, which) {
 t_test_with_na <- function(x, alternative = "two.sided", mu = 0, return_p = FALSE) {
   x <- as.numeric(x)
   if (length(x[!is.na(x)]) <= 1) {
-    # stat <- NA
-    # ci <- c(NA, NA)
-    # out <- list(stat, ci)
-    # names(out) <- c("stat", "conf.int")
-    # out
-    if (return_p) {
-      return(NaN)
-    }
     return(NA)
-  } else {
-    test <- t.test(x, alternative = alternative, mu = mu)
-    if (return_p) {
-      return(test$p.value)
-    }
-    return(test)
   }
+  # when no deviation in the bin
+  if (sd(x) == 0) {
+    return(NA)
+  }
+  test <- t.test(x, alternative = alternative, mu = mu)
+  if (return_p) {
+    return(test$p.value)
+  }
+  return(test)
 }
 
 test_cn_loss <- function(x) {
@@ -273,9 +268,9 @@ init_loh_report <- function(a1, a2) {
     "Num_MM" = as.integer(0),
     "Num_Bins" = as.integer(0),
     "Num_MM_Bins" = as.integer(0),
-    "Num_A1_Loss_Supporting_Bins" = as.integer(0),
-    "Num_A2_Loss_Supporting_Bins" = as.integer(0),
-    "Num_CN_Diff_Supporting_Bins" = as.integer(0)
+    "Pct_A1_Loss_Supporting_Bins" = NaN,
+    "Pct_A2_Loss_Supporting_Bins" = NaN,
+    "Pct_CN_Diff_Supporting_Bins" = NaN
   )
 }
 
@@ -383,6 +378,7 @@ call_hla_loh <- function(
   ]
   # FIXME: I should get this right after finished making bins
   bins_no_mm <- bin_dt$bin[which(!bin_dt$bin %in% unique(mm_dt$bin))]
+  bins_no_mm <- bins_no_mm[!is.na(bins_no_mm)]
   report$Num_MM_Bins <- report$Num_Bins - length(bins_no_mm)
   report$HLA_A1_Median_LogR <- median(
     a1_cov_dt[!a1_bin %in% bins_no_mm]$a1_logR,
@@ -407,14 +403,20 @@ call_hla_loh <- function(
   report$HLA_A2_CN_Lower <- round(cn_est_conf$est_lower, 4)
   report$HLA_A2_CN_Upper <- round(cn_est_conf$est_upper, 4)
   bin_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_dt]
-  report$Num_A1_Loss_Supporting_Bins <- nrow(
-    bin_dt[a1_cn_loss_bin_pvalue <= 0.01 & !bin %in% bins_no_mm]
+  report$Pct_A1_Loss_Supporting_Bins <- round(
+    nrow(bin_dt[a1_cn_loss_bin_pvalue <= 0.01]) / nrow(
+      bin_dt[!is.na(a1_cn_loss_bin_pvalue)] * 100
+    ), 4
   )
-  report$Num_A2_Loss_Supporting_Bins <- nrow(
-    bin_dt[a2_cn_loss_bin_pvalue <= 0.01 & !bin %in% bins_no_mm]
+  report$Pct_A2_Loss_Supporting_Bins <- round(
+    nrow(bin_dt[a2_cn_loss_bin_pvalue <= 0.01]) / nrow(
+      bin_dt[!is.na(a2_cn_loss_bin_pvalue)] * 100
+    ), 4
   )
-  report$Num_CN_Diff_Supporting_Bins <- nrow(
-    bin_dt[cn_loss_test_bin <= 0.01 & !bin %in% bins_no_mm]
+  report $Pct_CN_Diff_Supporting_Bins <- round(
+    nrow(bin_dt[cn_loss_test_bin <= 0.01]) / nrow(
+      bin_dt[!is.na(cn_loss_test_bin)] * 100
+    ), 4
   )
   rm(cn_dt)
 
