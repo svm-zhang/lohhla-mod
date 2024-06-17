@@ -405,18 +405,18 @@ call_hla_loh <- function(
   bin_dt <- cn_dt[, c("bin", "a1_bin_cn", "a2_bin_cn")][bin_dt]
   report$Pct_A1_Loss_Supporting_Bins <- round(
     nrow(bin_dt[a1_cn_loss_bin_pvalue <= 0.01]) / nrow(
-      bin_dt[!is.na(a1_cn_loss_bin_pvalue)] * 100
-    ), 4
+      bin_dt[!is.na(a1_cn_loss_bin_pvalue)]
+    ) * 100, 4
   )
   report$Pct_A2_Loss_Supporting_Bins <- round(
     nrow(bin_dt[a2_cn_loss_bin_pvalue <= 0.01]) / nrow(
-      bin_dt[!is.na(a2_cn_loss_bin_pvalue)] * 100
-    ), 4
+      bin_dt[!is.na(a2_cn_loss_bin_pvalue)]
+    ) * 100, 4
   )
   report $Pct_CN_Diff_Supporting_Bins <- round(
     nrow(bin_dt[cn_loss_test_bin <= 0.01]) / nrow(
-      bin_dt[!is.na(cn_loss_test_bin)] * 100
-    ), 4
+      bin_dt[!is.na(cn_loss_test_bin)]
+    ) * 100, 4
   )
   rm(cn_dt)
 
