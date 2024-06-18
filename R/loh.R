@@ -49,6 +49,8 @@ bin_allele_cov <- function(cov_dt, bin_dt) {
   cov_dt[S4Vectors::queryHits(ovl), "bin"] <- bin_dt[
     S4Vectors::subjectHits(ovl), "bin"
   ]
+  # pos without bin assignment, no need
+  cov_dt <- cov_dt[!is.na(bin)]
   cov_dt[, ":="(
     bin_t_dp = as.numeric(median(t_dp, na.rm = TRUE)),
     bin_n_dp = as.numeric(median(n_dp, na.rm = TRUE))
@@ -102,6 +104,7 @@ estimate_binned_logr <- function(a1_dt, a2_dt, multfactor) {
   binned_names <- names(bin_dt)[which(grepl("bin", names(bin_dt)))]
   bin_dt <- bin_dt[, ..binned_names]
   bin_dt[, ":="(bin = a1_bin, a1_bin = NULL)]
+  bin_dt <- bin_dt[!is.na(a1_bin_logR) & !is.na(a2_bin_logR)]
   bin_dt[, logR_combined_bin := log2(
     (a1_bin_t_dp + a2_bin_t_dp) /
       (a1_bin_n_dp + a2_bin_n_dp) * multfactor
@@ -204,13 +207,20 @@ estimate_cn_conf <- function(cn_dt, which) {
   list(est_lower = cn_est_lower, est_upper = cn_est_upper)
 }
 
+# FIXME: ugly and should make it simpler
 t_test_with_na <- function(x, alternative = "two.sided", mu = 0, return_p = FALSE) {
   x <- as.numeric(x)
   if (length(x[!is.na(x)]) <= 1) {
+    if (return_p) {
+      return(NaN)
+    }
     return(NA)
   }
   # when no deviation in the bin
   if (sd(x) == 0) {
+    if (return_p) {
+      return(NaN)
+    }
     return(NA)
   }
   test <- t.test(x, alternative = alternative, mu = mu)
@@ -222,7 +232,7 @@ t_test_with_na <- function(x, alternative = "two.sided", mu = 0, return_p = FALS
 
 test_cn_loss <- function(x) {
   if (anyNA(x)) {
-    return(NA)
+    return(NaN)
   }
   x <- matrix(round(x), nrow = 2)
   test <- fisher.test(x)
