@@ -798,14 +798,10 @@ main <- function() {
     )
   }
 
-  corrector <- NaN
-  if (args$corrector == "global") {
-    n_seq_depth <- estimate_dp(filt_nbam, alleles = alleles_n)
-    t_seq_depth <- estimate_dp(filt_tbam, alleles = alleles_n)
-    corrector <- n_seq_depth / t_seq_depth
-    print("global")
-    print(corrector)
-  }
+  n_seq_depth <- estimate_dp(filt_nbam, alleles = alleles_n)
+  t_seq_depth <- estimate_dp(filt_tbam, alleles = alleles_n)
+  corrector <- n_seq_depth / t_seq_depth
+  print(paste("[INFO] Global depth corrector: ", corrector, sep=""))
 
   loh_res_dt <- alleles_dt[, call_hla_loh(
     .SD,
