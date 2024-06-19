@@ -1,6 +1,6 @@
 context:
   version: 0.1
-  name: hlalohreforged
+  name: lohhlamod
 
 package:
   name: "{{ name }}"
@@ -37,8 +37,8 @@ requirements:
 test:
   exists:
     bin:
-      - hlalohReforged
-      - hlalohplot
+      - lohhlamod
+      - lohhlaplot
       - samtools
 
 extra:
