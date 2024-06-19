@@ -286,7 +286,7 @@ init_loh_report <- function(a1, a2) {
 
 call_hla_loh <- function(
     dt, tbam, nbam, hlaref, outdir,
-    purity, ploidy, min_dp, min_necnt, corrector = NaN, gamma = 1) {
+    purity, ploidy, min_dp, min_necnt, corrector, gamma = 1) {
   a1 <- dt$A1
   a2 <- dt$A2
   alleles_str <- paste(c(a1, a2), collapse = " and ")
@@ -294,14 +294,6 @@ call_hla_loh <- function(
 
   report <- init_loh_report(a1, a2)
 
-  if (is.nan(corrector)) {
-    n_seq_depth <- estimate_dp(bam = nbam, alleles = c(a1, a2))
-    t_seq_depth <- estimate_dp(bam = tbam, alleles = c(a1, a2))
-    # dp_info <- list(n_seq_depth = n_seq_depth, t_seq_depth = t_seq_depth)
-    corrector <- n_seq_depth / t_seq_depth
-    print("local")
-    print(corrector)
-  }
   print(paste(
     "[INFO] Align sequences between ", alleles_str,
     sep = ""
