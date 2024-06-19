@@ -26,11 +26,6 @@ parse_cmd <- function() {
     metavar = "DIR", type = "character", required = TRUE,
     help = "Specify the output directory"
   )
-  parser$add_argument("--corrector",
-    metavar = "INT", type = "character", default = "local",
-    choices = c("local", "global"),
-    help = "Specify to use local or global corrector [local]"
-  )
   parser$add_argument("--min_cov",
     metavar = "INT", type = "integer", default = 30,
     help = "Specify the minimum coverage at mismatch sites (30)"
