@@ -38,6 +38,11 @@ To get BAM for normal sample, you can simply follow the [example](https://github
 
 Please follow this [guide](https://github.com/svm-zhang/polysolverMod?tab=readme-ov-file#scenario-detecting-loh-from-paired-tumor-and-normal-samples) specifically for getting realigned-BAM for tumor sample. 
 
+### HLA reference
+
+This refers to the sample-level HLA reference with specific typed alleles for the sample. The reference file is available after you successfully run `polysolverMod` on the normal sample.
+
+
 ## Explain Output
 
 
