@@ -43,6 +43,17 @@ Please follow this [guide](https://github.com/svm-zhang/polysolverMod?tab=readme
 This refers to the sample-level HLA reference with specific typed alleles for the sample. The reference file is available after you successfully run `polysolverMod` on the normal sample.
 
 
+### Estimated tumor ploidy and purity (--tstates)
+
+`lohhlamod` uses estimated ploidy and purity for inferring allelic copy number. Ploidy and purity estimates can be obtained from many CNV algorithms. In cases where there is no paired normal sample or reference panel available such that you cannot get the estimates, `lohhlamod` allows this option to be optional by using a default value of `ploidy = 2` and `purity = 0.5`. The default values have not made customizable from command line at the moment.
+
+An example of the file provided to `--tstates` looks like below:
+
+| SampleID | TumorPloidy | TumorPurityNGS |
+| -------- | ----------- | -------------- |
+|   s1_t   |     2.33    |        1       |
+
+
 ## Explain Output
 
 
