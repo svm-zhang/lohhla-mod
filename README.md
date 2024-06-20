@@ -93,6 +93,14 @@ lohhlaplot --sample "$subject" \
 The command above creates a sub-folder within the `--loh_dir` folder. Each HLA gene gets a set of plots:
 1. coverage distribution across the entire length of allele 1 and 2 in the normal sample
 ![s6.hla_a.n_dp.png](./simulation/s6/s6_plots/hla_a.n_dp.png)
+2. coverage distribution across the entire length of allele 1 and 2 in the tumor sample
+![s6.hla_a.t_dp.png](./simulation/s6/s6_plots/hla_a.t_dp.png)
+3. paired tumor and normal coverage distribution in log10 scale across the entire length of allele 1 and 2. Tumor coverage in this plot is corrected for tumor and normal depth difference. This plot should inform you whether or not there is a LOH event occurring in one of the alleles.
+![s6.hla_a.tn_dp.png](./simulation/s6/s6_plots/hla_a.tn_dp.png)
+4. distribution of log-ratio of tumor versus normal across entire length of allele 1 and 2. The dashed line represents median estimate of logR for each allele
+![s6.hla_a.logR.png](./simulation/s6/s6_plots/hla_a.logR.png)
+5. distribution of BAF
+![s6.hla_a.baf.png](./simulation/s6/s6_plots/hla_a.baf.png)
 
 ## Key differences from the OG lohhla algorithm
 
