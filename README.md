@@ -92,7 +92,7 @@ lohhlaplot --sample "$subject" \
 
 The command above creates a sub-folder within the `--loh_dir` folder. Each HLA gene gets a set of plots:
 1. coverage distribution across the entire length of allele 1 and 2 in the normal sample
-[!s6.hla_a.n_dp.png](./simulation/s6/s6_plots/hla_a.n_dp.png)
+![s6.hla_a.n_dp.png](./simulation/s6/s6_plots/hla_a.n_dp.png)
 
 ## Key differences from the OG lohhla algorithm
 
