@@ -65,7 +65,7 @@ An example of the file provided to `--tstates` looks like below:
 The columns in the LOH result are defined as follows:
 * `HLA_A1_CN`: estimated copy number (CN) for allele 1, the upper and lower estimates are named with `Upper` and `Lower` suffix
 * `HLA_A2_CN`: estimated CN for allele 2
-* `Pct_CN_Diff_Supporting_Bins`: percentage of bins supporting a significant CN difference b/w allele 1 and 2 at `&alpha = 1%`
+* `Pct_CN_Diff_Supporting_Bins`: percentage of bins supporting a significant CN difference b/w allele 1 and 2
 * `HLA_A1_Median_LogR`: median estimates of log-ratio of tumor versus normal for allele 1
 * `HLA_A2_Median_LogR`: same as above but for allele 2
 * `HLA_A1_MM_Median_LogR`: median estiamtes of log-ratio of tumor versus normal at mismatch sites for allele 1
@@ -75,14 +75,24 @@ The columns in the LOH result are defined as follows:
 * `Num_MM`: number of mismatches b/w 2 alleles
 * `Num_Bins`: total number of bins of size 150bp across the pairwise alignment b/w 2 alleles
 * `Num_MM_Bins`: number of bins with mismatch sites
-* `Pct_A1_Loss_Supporting_Bins`: percentage of bins supporting a significant CN loss for allele 1 at `&alpha = 1%`
+* `Pct_A1_Loss_Supporting_Bins`: percentage of bins supporting a significant CN loss for allele 1
 * `Pct_A2_Loss_Supporting_Bins`: same as above but for allele 2
 * `HLAGene`: HLA gene locus
 * `HLA_A1`: allele 1
 * `HLA_A2`: allele 2
 
 ## Visualize Coverage, LogR, and BAF
+`lohhlamod` provides a command `lohhlaplot` to generate a set of plots per HLA gene. `lohhlaplot` uses the `rds` files as backend data for visualization. To get the plots provided by this package, simply run:
 
+```
+lohhlaplot --sample "$subject" \
+    --loh_res "$loh_res_file" \
+    --loh_dir "$loh_outdir"
+```
+
+The command above creates a sub-folder within the `--loh_dir` folder. Each HLA gene gets a set of plots:
+1. coverage distribution across the entire length of allele 1 and 2 in the normal sample
+[!s6.hla_a.n_dp.png](./simulation/s6/hla_a.n_dp.png)
 
 ## Key differences from the OG lohhla algorithm
 
