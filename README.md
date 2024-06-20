@@ -56,6 +56,19 @@ An example of the file provided to `--tstates` looks like below:
 
 ## Explain Output
 
+`lohhlamod` dumps all results under output specified by `--outdir`.
+
+* `*.filt.bam`: filtered alignment result by minimum allowed mismatch events specified by `--min_ecnt` option. The filtered BAM files are used for the final LOH detection
+* `$subject.loh.res.tsv`: LOH main result, each row per allele (see below for column schema)
+* `*.rds`: serialized file with intermediate data tables, one per allele. These `rds` files are used for getting plots by running `lohhlaplot` command. 
+
+The columns in the LOH result are defined as follows:
+
+
+
+
+## Visualize Coverage, LogR, and BAF
+
 
 ## Key differences from the OG lohhla algorithm
 
