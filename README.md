@@ -8,6 +8,25 @@ Please refer to [INSATLL](INSTALL.md) for details.
 
 ## Command line
 
+```
+usage: lohhlamod
+       [-h] --subject STR --tbam FILE --nbam FILE --hlaref FILE
+       [--tstates FILE] --outdir DIR [--min_cov INT] [--min_necnt INT]
+       [--threads INT]
+
+options:
+  -h, --help       show this help message and exit
+  --subject STR    Specify the subject ID
+  --tbam FILE      Specify the tumor bam file
+  --nbam FILE      Specify the normal bam file
+  --hlaref FILE    Specify HLA reference sequence
+  --tstates FILE   Specify file includeing tumor purity and ploidy
+  --outdir DIR     Specify the output directory
+  --min_cov INT    Specify the minimum coverage at mismatch sites (30)
+  --min_necnt INT  Specify the minimum number of diff events allowed for reads
+                   mapping to HLA alleles (1)
+  --threads INT    Specify the number of threads (16)
+```
 
 ## Prepare Input
 
