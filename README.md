@@ -63,9 +63,23 @@ An example of the file provided to `--tstates` looks like below:
 * `*.rds`: serialized file with intermediate data tables, one per allele. These `rds` files are used for getting plots by running `lohhlaplot` command. 
 
 The columns in the LOH result are defined as follows:
-
-
-
+* `HLA_A1_CN`: estimated copy number (CN) for allele 1, the upper and lower estimates are named with `Upper` and `Lower` suffix
+* `HLA_A2_CN`: estimated CN for allele 2
+* `Pct_CN_Diff_Supporting_Bins`: percentage of bins supporting a significant CN difference b/w allele 1 and 2 at `&alpha = 1%`
+* `HLA_A1_Median_LogR`: median estimates of log-ratio of tumor versus normal for allele 1
+* `HLA_A2_Median_LogR`: same as above but for allele 2
+* `HLA_A1_MM_Median_LogR`: median estiamtes of log-ratio of tumor versus normal at mismatch sites for allele 1
+* `HLA_A2_MM_Median_LogR`: same as above but for allele 2
+* `MM_LogR_Paired_Pvalue`: p-value from paired test for log-ratio difference b/w 2 alleles at mismatch sites
+* `Median_BAF`: median estimate of b-allele frequency across mismatch sites
+* `Num_MM`: number of mismatches b/w 2 alleles
+* `Num_Bins`: total number of bins of size 150bp across the pairwise alignment b/w 2 alleles
+* `Num_MM_Bins`: number of bins with mismatch sites
+* `Pct_A1_Loss_Supporting_Bins`: percentage of bins supporting a significant CN loss for allele 1 at `&alpha = 1%`
+* `Pct_A2_Loss_Supporting_Bins`: same as above but for allele 2
+* `HLAGene`: HLA gene locus
+* `HLA_A1`: allele 1
+* `HLA_A2`: allele 2
 
 ## Visualize Coverage, LogR, and BAF
 
