@@ -3,7 +3,7 @@
 | HLA Gene | A1_CN | A2_CN |
 | -------- | ----- | ----- |
 |  HLA-A   |   1   |   0   |
-|  HLA-A   |   1   |   1   |
+|  HLA-B   |   1   |   1   |
 |  HLA-C   |   3   |   1   |
 
 LOH event occurrs at HLA-A gene. In addition, subject `s6` also has an amplification of one of the alleles at HLA-C gene.
@@ -19,18 +19,31 @@ hlalohReforged --tbam s6_t.hla.realn.ready.bam \
     --subject s6
 ```
 
-## Case: copy-neutral LOH
+The command above applies the same to other simulated cases here. You only need to swap the right input BAM and reference files.
 
-## Case: Non-LOH
+## Case: Subject s7
 
+| HLA Gene | A1_CN | A2_CN |
+| -------- | ----- | ----- |
+|  HLA-A   |   1   |   1   |
+|  HLA-B   |   2   |   1   |
+|  HLA-C   |   0   |   0   |
 
-## Case: 1/1;2/1;0/0
+Subject `s7` loses both alleles of HLA-C gene.
 
-Simulate a case where HLA-C gene locus is entirely deleted
-```
-hlalohReforged --tbam s7_t.hla.realn.ready.bam --nbam s7_n.hla.realn.ready.bam s7_n.hla.fasta --tstates tstates.tsv --outdir $PWD --subject s7 --min_necnt 2 --corrector global
-```
+## Case: Subject s1
 
+| HLA Gene | A1_CN | A2_CN |
+| -------- | ----- | ----- |
+|  HLA-A   |   2   |   0   |
+
+This is a scenario of a copy neutral LOH event at HLA-A gene. Note that this and the next are the most simplified cases I first simulated for developing `lohhlamod`.
+
+## Case: Subject s2, a non-LOH case
+
+| HLA Gene | A1_CN | A2_CN |
+| -------- | ----- | ----- |
+|  HLA-B   |   1   |   1   |
 
 ## How to simulate
 
