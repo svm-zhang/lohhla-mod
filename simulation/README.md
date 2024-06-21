@@ -3,9 +3,7 @@
 | HLA Gene | A1_CN | A2_CN |
 | -------- | ----- | ----- |
 |  HLA-A   |   1   |   0   |
-| -------- | ----- | ----- |
 |  HLA-A   |   1   |   1   |
-| -------- | ----- | ----- |
 |  HLA-C   |   3   |   1   |
 
 LOH event occurrs at HLA-A gene. In addition, subject `s6` also has an amplification of one of the alleles at HLA-C gene.
