@@ -62,7 +62,7 @@ dwgsim -d 300 -s 20 -N 10000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.00109 -E 0.
 ### Simulate tumor sample
 Now switch gear to simulate tumor data from the normal data.
 1. Decide copy number of each allele at each HLA gene locus
-2. Make a modified HLA reference from the normal one by honoring the copy numbers. Note that if you make a LOH event, you need to create a separate Fasta file for the delete alleles
+2. Make a modified HLA reference from the normal one by honoring the copy numbers. Note that if you make a LOH event, the deleted alleles should not in the reference, instead you need to create a separate Fasta file for the delete alleles
 3. Simulate sequencing reads from the modified tumor HLA reference file using `dwgsim` command similar as above. The example command below generates 20k paired-end reads of 150bp with higher error rates and shorter fragment templates (trying to mimic tumor sample).
 ```
 dwgsim -d 280 -s 20 -N 20000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.002 -E 0.002 "$Tumor_HLA_REF" "$OUT_PREFIX"
