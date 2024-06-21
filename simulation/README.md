@@ -19,7 +19,9 @@ hlalohReforged --tbam s6_t.hla.realn.ready.bam \
     --subject s6
 ```
 
-The command above applies the same to other simulated cases here. You only need to swap the right input BAM and reference files.
+The command above generates `s6.loh.res.tsv` LOH result within the output directory you specified.
+
+You can apply the same command to all other cases below, with different BAM and HLA reference files.
 
 ## Case: Subject s7
 
@@ -47,19 +49,25 @@ This is a scenario of a copy neutral LOH event at HLA-A gene. Note that this and
 
 ## How to simulate
 
-I use [dwgsim](https://github.com/nh13/DWGSIM/tree/main) to simulate a few datasets as guidance set up expectation when LOH occurring and not occurring.
+### Simulate normal sample
+1. Create a _in silico_ normal individual with HLA alleles at HLA gene loci
+2. Make a HLA reference file with the selected alleles in Fasta format
+3. Simulate sequencing reads from the HLA reference using [dwgsim](https://github.com/nh13/DWGSIM/tree/main). The example command below generates 10k paired-end reads of 150bp from the HLA reference. Please refer to `dwgsim` documentation for details about all the command line options.
+```
+dwgsim -d 300 -s 20 -N 10000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.00109 -E 0.00109 "$HLA_REF" "$OUT_PREFIX"
+```
+4. Align simulated reads against human genome, sort and index the resulting BAM file
+5. Run `polysolvermod` to genotype HLA alleles using the BAM
 
-Using `dwgsim`, I first 
+### Simulate tumor sample
+Now switch gear to simulate tumor data from the normal data.
+1. Decide copy number of each allele at each HLA gene locus
+2. Make a modified HLA reference from the normal one by honoring the copy numbers. Note that if you make a LOH event, you need to create a separate Fasta file for the delete alleles
+3. Simulate sequencing reads from the modified tumor HLA reference file using `dwgsim` command similar as above. The example command below generates 20k paired-end reads of 150bp with higher error rates and shorter fragment templates (trying to mimic tumor sample).
 ```
-dwgsim -d 300 -s 20 -N 10000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.00109 -E 0.00109 s6.n.hla.fasta s6.n
+dwgsim -d 280 -s 20 -N 20000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.002 -E 0.002 "$Tumor_HLA_REF" "$OUT_PREFIX"
 ```
+4. Simulate sequencing reads for the delete alleles separately at lower coverage to mimic the loss event. Adjust the `-N` option in the `dwgsim` command can achieve this. 
+5. Combine all simulated sequencing reads and do step 4 as in the normal case
+6. Run `polysolvermod` with the `--realn_only` option to get the BAM file for `lohhlamod`. The HLA reference is the output reference from step 5 in the normal case
 
-```
-dwgsim -d 280 -s 20 -N 20000 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.002 -E 0.002 s6.t.hla.fasta s6.t
-```
-
-Simulate the lost allele (`hla_a_30_01_01`) with low coverage:
-```
-dwgsim -d 280 -s 20 -N 200 -1 150 -2 150 -R 0.02 -S 2 -H -o 1 -e 0.002 -E 0.002 s6.t.a2.fasta s6.t.a2
-
-```
