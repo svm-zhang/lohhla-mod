@@ -1,4 +1,0 @@
-HLAGene	HLA_A1	HLA_A2	HLA_A1_CN	HLA_A1_CN_Lower	HLA_A1_CN_Upper	HLA_A2_CN	HLA_A2_CN_Lower	HLA_A2_CN_Upper	HLA_A1_Median_LogR	HLA_A2_Median_LogR	HLA_A1_MM_Median_LogR	HLA_A2_MM_Median_LogR	MM_LogR_Paired_Pvalue	Median_BAF	Num_MM	Num_Bins	Num_Bins_Used	Num_CN_Loss_Supporting_Bins
-hla_a	hla_a_03_01_01_01	hla_a_11_01_01	2.1946	1.6776	2.4047	-0.3584	-0.4243	-0.2353	0.613403646614584	-1.49922520849632	0.671127748732954	-1.58031988482768	2.08186355647953e-24	0.817384004884005	39	23	14	12
-hla_b	hla_b_07_02_01	hla_b_07_02_01													0	0	0	0
-hla_c	hla_c_01_02_01	hla_c_01_02_01													0	0	0	0
