@@ -137,6 +137,13 @@ logR is calculated by correcting for the depth difference b/w tumor and normal l
 
 `lohhlamod` tries to make the global estimator reflecting what happens locally. And because the local coverage calculation uses the `--min_ecnt` option, `lohhlamod` simply adds the restriction when calculating the global corrector. The solution helps in certain cases, but does not work for everything as much as I would like.
 
+## Suggested Interpretation using lohhlamod
+
+1. First look at `Pct_CN_Diff_Supporting_Bins`, if you do not see a high proportion of bins supporting a CN difference, there is likely not a LOH event. Note that an amplification event can also have a high number for this metric
+2. Next look at `Pct_A1_Loss_Supporting_Bins` and `Pct_A1_Loss_Supporting_Bins` metrics. When LOH happens, either A1 or A2 should have a high number (check out the HLA-A case in simulated `s6` case). When both alleles are lost, both metrics should be high (check out the HLA-C case in simulated `s7` case)
+3. Then look at median logR estiamtes and median BAF metrics
+4. Last look at copy number estimates for both alleles. Note that if you see the estimated CN is outside of lower and upper bounds, it means you have a skewed data and the assumption of t test used for the estimate is probably being violated. This in turn also means that you need to take a closer look at your data 
+5. I would also suggest check out the plot, especially the `tn_dp` one.
 
 ## Hidden cutoffs
 There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. These cutoffs can be easily exposed to command line though:
