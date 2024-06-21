@@ -102,6 +102,14 @@ The command above creates a sub-folder within the `--loh_dir` folder. Each HLA g
 5. distribution of BAF
 ![s6.hla_a.baf.png](./simulation/s6/s6_plots/hla_a.baf.png)
 
+## Simulation data
+
+I provided a few _in silico_ datasets to mimic certain scenarios. But it is important to note that these are idealized datasets that provide guidance only. Please refer to the [README](./simulation/README.md) for more details.
+
+## Original lohhla test data
+
+The original example data from the `lohhla` algorithm is also available in this repo. I used `polysolvermod` to get the BAM files and HLA reference. Then `lohhlamod` was used to generate the LOH result. You can use this data to test `lohhlamod` prior to running on your own data. Note that there is LOH result for HLA-A gene as it is the only HLA gene provided in the example.
+
 ## Key differences from the OG lohhla algorithm
 
 
