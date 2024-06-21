@@ -66,12 +66,12 @@ make_bins_old <- function(allele, aln, allele_length, bin_size = 150) {
 }
 
 initialize_libs <- function() {
-  pkg_name <- "hlalohReforged"
+  pkg_name <- "lohhlamod"
   libpaths <- file.path(.libPaths(), pkg_name)
   lib_pattern <- "(bamer|cli|loh|pairwise_aln|pathio).R"
   rscripts <- list.files(libpaths, lib_pattern, full.names = TRUE, recursive = TRUE)
   if (length(rscripts) == 0) {
-    print("[ERROR] Found no related R script libraries to run hlalohReforged")
+    print("[ERROR] Found no related R script libraries to run lohhlamod")
     quit(status = 1)
   }
   invisible(sapply(rscripts, source))
