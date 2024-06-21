@@ -113,9 +113,20 @@ The original example data from the `lohhla` algorithm is also available in this 
 ## Key differences from the OG lohhla algorithm
 
 
+## Hidden cutoffs
+There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. These cutoffs can be easily exposed to command line though:
+* bin size: 150bp
+* minimum number of mismatches b/w 2 alleles required: 5 (below which no LOH detection will be attempted)
+* p value: 0.01
+* gamma: 1
+* parameters used for running samtools mpileup
+  * minimum base quality: 20
+  * exclude flag: 3584 [UNMAP, QCFAIL, DUP]
+  * include flag: 2
+
 ## Disclaimer
 
-I, by no means, try to overtake the origianl idea and implementation of `lohhla` algorithm. This repo opens to all non-commercial researchers and projects. My mere purpose is to make it more accessible to the community based on the exprience I had in the past years.
+I, by no means, try to overtake the origianl idea and implementation of `lohhla` algorithm. This repo opens to all non-commercial researchers and projects. My mere purpose is to make it more accessible to the community based on the exprience I had in the past years. The codebase itself is a bit upgrade from the original `lohhla`, although it still can be greatly improved imo.
 
 ## Citation
 
