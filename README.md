@@ -115,10 +115,10 @@ The original example data from the `lohhla` algorithm is also available in this 
 
 ## Disclaimer
 
-I, by no means, try to overtake the origianl idea and implementation of `polysolver` algorithm. This repo opens to all non-commercial researchers and projects. My mere purpose is to make `polysolver` better, faster, more versatile, if not more accurate.
+I, by no means, try to overtake the origianl idea and implementation of `lohhla` algorithm. This repo opens to all non-commercial researchers and projects. My mere purpose is to make it more accessible to the community based on the exprience I had in the past years.
 
 ## Citation
 
-Please cite the original [polysolver](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4747795/) paper.
+Please cite the original [lohhla](https://doi.org/10.1016/j.cell.2017.10.001) paper.
 
-If you use `polysolvermod`, please cite this github repo as well.
+If you use `lohhlamod`, please kindly cite this github repo as well.
