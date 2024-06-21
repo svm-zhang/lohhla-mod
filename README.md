@@ -112,6 +112,31 @@ The original example data from the `lohhla` algorithm is also available in this 
 
 ## Key differences from the OG lohhla algorithm
 
+### Additional metrics for better interpretation
+The original `lohhla` calls a LOH event when following conditions are met:
+* A copy number < 0.5 (Step 5 section under Method in the paper) 
+* `PVal_unique < 0.01` (Step 5 section under Method in the paper) 
+* The lost allele is the one with the lower median logR at mismatch sites (line 1404-1405 in `LOHHLAscript.R`)
+
+These are all valid and good choices to have good LOH detection accuracy. However, I found these parameters can still lead to overcalling of LOH events, at least on the datasets I was working on in the past.
+
+`lohhlamod` offers a few more metrics to help (hopefully):
+* `Pct_CN_Diff_Supporting_Bins`: this metric tells you how many bins support a significant CN difference b/w the 2 alleles. If there is a LOH event (e.g. 2/0 or 1/0), it is expected that the event spans across a large portion of the allele length. Personally, I find `75%` is a starting point to tune this value
+* `Pct_A1_Loss_Supporting_Bins` and `Pct_A1_Loss_Supporting_Bins`: these 2 metrics tell you how many bins support a CN loss for A1 and A2 alleles, respectively. By "CN loss", it is coded as a one-sample t-test of allelic logR against `mu=-1`. The motivation behind having these 2 metrics is to handle cases (I encountered a lot) where estimated CNs for both alleles are less than `0.5`, or are even negative. Personally, I am not knowledgeable enough to have an approximate number on the proprotion of individuals in a clinical study who lose both copies of a HLA gene. But I was handed LOH results from running `lohhla` that had both CN estimates less than 0.5 or 0
+* `MM_LogR_Paired_Pvalue`: this metric is the same as the `PVal` (legacy) metric, rather than `PVal_unique`. I do not quite get the gist of the `unique` concept underlying `PVal_unique`. And quite honest, I personally do not think it will greatly help avoid to overcall LOH. That is why I choose to use a simple solution
+
+### BAF corrected for allelic capture bias
+
+When one allele has a higher frequency than its counterpart at a site, it can also be due to the fact that the assay (weblab) captures one allele better than the other. `lohhlamod` estimates capture bias from the normal sample, and corrects for the observed BAF in the tumor.
+
+Note that the correction can lead to a BAF larger than 1.0. This happens when at some sites, the capture bias corrector does not have the same direction as the observation in tumor. `lohhlamod` forces BAF to be a value of 1 in such cases. 
+
+### Global depth corrector
+
+logR is calculated by correcting for the depth difference b/w tumor and normal libraries. In an idealized world, this correction should always make logR a value of 0 in a diploid state. In reality, however, I have seen considerable number of cases where median logR are negative for both alleles, which in turn leads to underestimation of copy number. In such cases, negative logR are not necessarily indicative of copy number loss. Rather, it means i) the diploid state of logR is shift from zero; ii) the global depth corrector might not reflect the observation across HLA genes.
+
+`lohhlamod` tries to make the global estimator reflecting what happens locally. And because the local coverage calculation uses the `--min_ecnt` option, `lohhlamod` simply adds the restriction when calculating the global corrector. The solution helps in certain cases, but does not work for everything as much as I would like.
+
 
 ## Hidden cutoffs
 There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. These cutoffs can be easily exposed to command line though:
