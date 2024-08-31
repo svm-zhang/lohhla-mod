@@ -1,4 +1,33 @@
-# lohhla Modern
+<h1>
+    lohhla Modern
+</h1>
+
+<!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
+
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Command line](#command-line)
+- [Prepare Input](#prepare-input)
+   * [BAM](#bam)
+   * [HLA reference](#hla-reference)
+   * [Estimated tumor ploidy and purity (--tstates)](#estimated-tumor-ploidy-and-purity---tstates)
+- [Explain Output](#explain-output)
+- [Visualize Coverage, LogR, and BAF](#visualize-coverage-logr-and-baf)
+- [Simulation data](#simulation-data)
+- [Original lohhla test data](#original-lohhla-test-data)
+- [Key differences from the OG lohhla algorithm](#key-differences-from-the-og-lohhla-algorithm)
+   * [Additional metrics for better interpretation](#additional-metrics-for-better-interpretation)
+   * [BAF corrected for allelic capture bias](#baf-corrected-for-allelic-capture-bias)
+   * [Global depth corrector](#global-depth-corrector)
+- [Suggested Interpretation using lohhlamod](#suggested-interpretation-using-lohhlamod)
+- [Hidden cutoffs](#hidden-cutoffs)
+- [License](#license)
+- [Disclaimer](#disclaimer)
+- [Citation](#citation)
+
+<!-- TOC end -->
+
+## Introduction
 
 `lohhlamod` is the original [lohhla](https://doi.org/10.1016/j.cell.2017.10.001) HLA loss of heterozygosity detection algorithm re-engineered in modern style.
 
@@ -178,4 +207,3 @@ There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. Th
 Please cite the original [HLALOH](https://doi.org/10.1016/j.cell.2017.10.001) paper.
 
 If you use `lohhlamod`, please kindly cite this github repo as well.
-
