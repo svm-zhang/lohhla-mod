@@ -162,6 +162,10 @@ There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. Th
   - exclude flag: 3584 [UNMAP, QCFAIL, DUP]
   - include flag: 2
 
+## License
+
+`lohhlamod` fully respects all [LICENSE requirments](https://github.com/mskcc/lohhla) imposed by the original `LOHHLA` tool. It is a modernized version of the `LOHHLA` algorithm with sole purpose of providing a tool for better integration with current biomarker analysis pipeline. It is free to use and to be modified for all non-commercial parties. All commercial use and modification of `lohhlamod`, including transfer, sale or license to a commercial third party or use on behalf of a commercial third-party (including but not limited to use as part of a service supplied to any third-party for financial reward) is not permitted.
+
 ## Disclaimer
 
 - I, by no means, intent to overtake the origianl idea, implementation, and copyright of the original `LOHHLA` algorithm.
