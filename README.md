@@ -1,5 +1,5 @@
 <h1>
-    lohhla Modern
+    lohhla-mod
 </h1>
 
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
@@ -19,7 +19,7 @@
   - [Additional metrics for better interpretation](#additional-metrics-for-better-interpretation)
   - [BAF corrected for allelic capture bias](#baf-corrected-for-allelic-capture-bias)
   - [Global depth corrector](#global-depth-corrector)
-- [Suggested Interpretation using lohhlamod](#suggested-interpretation-using-lohhlamod)
+- [Suggested Interpretation using lohhla-mod](#suggested-interpretation-using-lohhla-mod)
 - [Hidden cutoffs](#hidden-cutoffs)
 - [License](#license)
 - [Disclaimer](#disclaimer)
@@ -29,7 +29,16 @@
 
 ## Introduction
 
-`lohhlamod` is the original [lohhla](https://doi.org/10.1016/j.cell.2017.10.001) HLA loss of heterozygosity detection algorithm re-engineered in modern style.
+`lohhla-mod` is the original [LOHHLA](https://doi.org/10.1016/j.cell.2017.10.001) algorithm re-engineered in modern style that
+
+- offers additional features/metrics for better interpretation
+- offers runtime speedup
+  - separates HLA realignment from LOH detection
+  - maximizes vectorized operations whenever possible
+  - uses data.table for efficient data processing
+- provides better output layout and makes intermediate result per allele in RDS format accessible
+- provides proper packaging for ease use in multi-user HPC environment
+- removes hardcoded path presets for better code maintenance
 
 ## Installation
 
@@ -61,11 +70,11 @@ options:
 
 ### BAM
 
-`lohhlamod` does not do realignment like the original `lohhla` program. To get the required BAMs, you can use [polysolverMod](https://github.com/svm-zhang/polysolverMod), another re-engineered HLA typing tool based on `polysolver`.
+`lohhla-mod` does not do realignment like the original `LOHHLA` program. To get the required BAMs, you can use [polysolverMod](https://github.com/svm-zhang/polysolverMod), a re-engineered HLA typing tool based on `Polysolver`.
 
-To get BAM for normal sample, you can simply follow the [example](https://github.com/svm-zhang/polysolverMod?tab=readme-ov-file#quick-start) and swap with your data. `polysolverMod` generates the realigned BAM with suffix `ready.bam`, that is ready for detecting LOH.
+To get BAM for normal sample, you can simply follow the [example](https://github.com/svm-zhang/polysolverMod?tab=readme-ov-file#quick-start) with your data. `polysolverMod` generates the realigned BAM with suffix `ready.bam`, that is ready for detecting LOH.
 
-Please follow this [guide](https://github.com/svm-zhang/polysolverMod?tab=readme-ov-file#scenario-detecting-loh-from-paired-tumor-and-normal-samples) specifically for getting realigned-BAM for tumor sample.
+Please follow this [guide](https://github.com/svm-zhang/polysolverMod?tab=readme-ov-file#scenario-detecting-loh-from-paired-tumor-and-normal-samples) specifically for getting realigned BAM for tumor sample.
 
 ### HLA reference
 
@@ -73,7 +82,7 @@ This refers to the sample-level HLA reference with specific typed alleles for th
 
 ### Estimated tumor ploidy and purity (--tstates)
 
-`lohhlamod` uses estimated ploidy and purity for inferring allelic copy number. Ploidy and purity estimates can be obtained from many CNV algorithms. In cases where there is no paired normal sample or reference panel available such that you cannot get the estimates, `lohhlamod` allows this option to be optional by using a default value of `ploidy = 2` and `purity = 0.5`. The default values have not made customizable from command line at the moment.
+`lohhla-mod` uses estimated ploidy and purity for inferring allelic copy number. Ploidy and purity estimates can be obtained from many CNV algorithms. In cases where there is no paired normal sample or reference panel available such that you cannot get the estimates, `lohhla-mod` allows this option to be optional by using a default value of `ploidy = 2` and `purity = 0.5`. The default values have not made customizable from command line at the moment.
 
 An example of the file provided to `--tstates` looks like below:
 
@@ -83,7 +92,7 @@ An example of the file provided to `--tstates` looks like below:
 
 ## Explain Output
 
-`lohhlamod` dumps all results under output specified by `--outdir`.
+`lohhla-mod` dumps all results under output specified by `--outdir`.
 
 - `*.filt.bam`: filtered alignment result by minimum allowed mismatch events specified by `--min_ecnt` option. The filtered BAM files are used for the final LOH detection
 - `$subject.loh.res.tsv`: LOH main result, each row per allele (see below for column schema)
@@ -111,7 +120,7 @@ The columns in the LOH result are defined as follows:
 
 ## Visualize Coverage, LogR, and BAF
 
-`lohhlamod` provides a command `lohhlaplot` to generate a set of plots per HLA gene. `lohhlaplot` uses the `rds` files as backend data for visualization. To get the plots provided by this package, simply run:
+`lohhla-mod` provides a separate command `lohhlaplot` to generate a set of plots per HLA gene. `lohhlaplot` uses the `rds` files as backend data for visualization. To get the plots provided by this package, simply run:
 
 ```
 lohhlaplot --sample "$subject" \
@@ -138,7 +147,7 @@ I provided a few _in silico_ datasets to mimic certain scenarios. But it is impo
 
 ## Original lohhla test data
 
-The original example data from the `lohhla` algorithm is also available in this repo. I used `polysolvermod` to get the BAM files and HLA reference. Then `lohhlamod` was used to generate the LOH result. You can use this data to test `lohhlamod` prior to running on your own data. Note that there is LOH result for HLA-A gene as it is the only HLA gene provided in the example.
+The original example data from the `LOHHLA` algorithm is also available in this repo. I used `polysolverMod` to get the BAM files and HLA reference. Then `lohhla-mod` was used to generate the LOH result. You can use this data to test `lohhla-mod` prior to running on your own data. Note that there is LOH result for HLA-A gene as it is the only HLA gene provided in the example.
 
 ## Key differences from the OG lohhla algorithm
 
@@ -152,7 +161,7 @@ The original `lohhla` calls a LOH event when following conditions are met:
 
 These are all valid and good choices to have good LOH detection accuracy. However, I found these parameters can still lead to overcalling of LOH events, at least on the datasets I was working on in the past.
 
-`lohhlamod` offers a few more metrics to help (hopefully):
+`lohhla-mod` offers a few more metrics to help (hopefully):
 
 - `Pct_CN_Diff_Supporting_Bins`: this metric tells you how many bins support a significant CN difference b/w the 2 alleles. If there is a LOH event (e.g. 2/0 or 1/0), it is expected that the event spans across a large portion of the allele length. Personally, I find `75%` is a starting point to tune this value
 - `Pct_A1_Loss_Supporting_Bins` and `Pct_A1_Loss_Supporting_Bins`: these 2 metrics tell you how many bins support a CN loss for A1 and A2 alleles, respectively. By "CN loss", it is coded as a one-sample t-test of allelic logR against `mu=-1`. The motivation behind having these 2 metrics is to handle cases (I encountered a lot) where estimated CNs for both alleles are less than `0.5`, or are even negative. Personally, I am not knowledgeable enough to have an approximate number on the proprotion of individuals in a clinical study who lose both copies of a HLA gene. But I was handed LOH results from running `lohhla` that had both CN estimates less than 0.5 or 0
@@ -160,17 +169,17 @@ These are all valid and good choices to have good LOH detection accuracy. Howeve
 
 ### BAF corrected for allelic capture bias
 
-When one allele has a higher frequency than its counterpart at a site, it can also be due to the fact that the assay (weblab) captures one allele better than the other. `lohhlamod` estimates capture bias from the normal sample, and corrects for the observed BAF in the tumor.
+When one allele has a higher frequency than its counterpart at a site, it can also be due to the fact that the assay (weblab) captures one allele better than the other. `lohhla-mod` estimates capture bias from the normal sample, and corrects for the observed BAF in the tumor.
 
-Note that the correction can lead to a BAF larger than 1.0. This happens when at some sites, the capture bias corrector does not have the same direction as the observation in tumor. `lohhlamod` forces BAF to be a value of 1 in such cases.
+Note that the correction can lead to a BAF larger than 1.0. This happens when at some sites, the capture bias corrector does not have the same direction as the observation in tumor. `lohhla-mod` forces BAF to be a value of 1 in such cases.
 
 ### Global depth corrector
 
 logR is calculated by correcting for the depth difference b/w tumor and normal libraries. In an idealized world, this correction should always make logR a value of 0 in a diploid state. In reality, however, I have seen considerable number of cases where median logR are negative for both alleles, which in turn leads to underestimation of copy number. In such cases, negative logR are not necessarily indicative of copy number loss. Rather, it means i) the diploid state of logR is shift from zero; ii) the global depth corrector might not reflect the observation across HLA genes.
 
-`lohhlamod` tries to make the global estimator reflecting what happens locally. And because the local coverage calculation uses the `--min_ecnt` option, `lohhlamod` simply adds the restriction when calculating the global corrector. The solution helps in certain cases, but does not work for everything as much as I would like.
+`lohhla-mod` tries to make the global estimator reflecting what happens locally. And because the local coverage calculation uses the `--min_ecnt` option, `lohhla-mod` simply adds the restriction when calculating the global corrector. The solution helps in certain cases, but does not work for everything as much as I would like.
 
-## Suggested Interpretation using lohhlamod
+## Suggested Interpretation using lohhla-mod
 
 1. First look at `Pct_CN_Diff_Supporting_Bins`, if you do not see a high proportion of bins supporting a CN difference, there is likely not a LOH event. Note that an amplification event can also have a high number for this metric
 2. Next look at `Pct_A1_Loss_Supporting_Bins` and `Pct_A1_Loss_Supporting_Bins` metrics. When LOH happens, either A1 or A2 should have a high number (check out the HLA-A case in simulated `s6` case). When both alleles are lost, both metrics should be high (check out the HLA-C case in simulated `s7` case)
@@ -180,7 +189,7 @@ logR is calculated by correcting for the depth difference b/w tumor and normal l
 
 ## Hidden cutoffs
 
-There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. These cutoffs can be exposed to command line if needed in the future:
+There are a few pre-defined and non-customizable cutoffs used in `lohhla-mod`. These cutoffs can be exposed to command line if needed in the future:
 
 - bin size: 150bp
 - minimum number of mismatches b/w 2 alleles required: 5 (below which no LOH detection will be attempted)
@@ -193,18 +202,18 @@ There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. Th
 
 ## License
 
-- `lohhlamod` fully respects all [LICENSE requirments](https://bitbucket.org/mcgranahanlab/lohhla/src/master/) imposed by the original `LOHHLA` tool.
-- I am currently checking with the original authors of `LOHHLA` package, and will update license file once I get confirmation. For now, `lohhlamod` is free to use for all non-commercial parties.
+- `lohhla-mod` fully respects all [LICENSE requirments](https://bitbucket.org/mcgranahanlab/lohhla/src/master/) imposed by the original `LOHHLA` tool.
+- I am currently checking with the original authors of `LOHHLA` package, and will update license file once I get confirmation. For now, `lohhla-mod` is free to use for all non-commercial parties.
 
 ## Disclaimer
 
 - I, by no means, intent to overtake the origianl idea, implementation, and copyright of the original `LOHHLA` algorithm.
 - This repo does not distribute `LOHHLA` package, as well as all its dependent third-party parties that are under commercial licenses.
-- `lohhlamod` does not necessarily produce identical result as `LOHHLA`, including but not limited to estimates of copy numbers, logR, BAF, plots, etc.
-- Please interpret result at your own discretion when using `lohhlamod`. I simulated a few datasets to demonstrate the performance of `lohhlamod` in the most ideal settings.
+- `lohhla-mod` does not necessarily produce identical result as `LOHHLA`, including but not limited to estimates of copy numbers, logR, BAF, plots, etc.
+- Please interpret result at your own discretion when using `lohhla-mod`. I simulated a few datasets to demonstrate the performance of `lohhla-mod` in the most ideal settings.
 
 ## Citation
 
 Please cite the original [HLALOH](https://doi.org/10.1016/j.cell.2017.10.001) paper and its [Bitbucket](https://bitbucket.org/mcgranahanlab/lohhla/src/master/) repository.
 
-If you use `lohhlamod`, please kindly cite this github repo as well.
+If you use `lohhla-mod`, please kindly cite this github repo as well.
