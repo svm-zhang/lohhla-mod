@@ -8,17 +8,17 @@
 - [Installation](#installation)
 - [Command line](#command-line)
 - [Prepare Input](#prepare-input)
-   * [BAM](#bam)
-   * [HLA reference](#hla-reference)
-   * [Estimated tumor ploidy and purity (--tstates)](#estimated-tumor-ploidy-and-purity---tstates)
+  - [BAM](#bam)
+  - [HLA reference](#hla-reference)
+  - [Estimated tumor ploidy and purity (--tstates)](#estimated-tumor-ploidy-and-purity---tstates)
 - [Explain Output](#explain-output)
 - [Visualize Coverage, LogR, and BAF](#visualize-coverage-logr-and-baf)
 - [Simulation data](#simulation-data)
 - [Original lohhla test data](#original-lohhla-test-data)
 - [Key differences from the OG lohhla algorithm](#key-differences-from-the-og-lohhla-algorithm)
-   * [Additional metrics for better interpretation](#additional-metrics-for-better-interpretation)
-   * [BAF corrected for allelic capture bias](#baf-corrected-for-allelic-capture-bias)
-   * [Global depth corrector](#global-depth-corrector)
+  - [Additional metrics for better interpretation](#additional-metrics-for-better-interpretation)
+  - [BAF corrected for allelic capture bias](#baf-corrected-for-allelic-capture-bias)
+  - [Global depth corrector](#global-depth-corrector)
 - [Suggested Interpretation using lohhlamod](#suggested-interpretation-using-lohhlamod)
 - [Hidden cutoffs](#hidden-cutoffs)
 - [License](#license)
@@ -193,17 +193,18 @@ There are a few pre-defined and non-customizable cutoffs used in `lohhlamod`. Th
 
 ## License
 
-`lohhlamod` fully respects all [LICENSE requirments](https://github.com/mskcc/lohhla) imposed by the original `LOHHLA` tool. It is a modernized version of the `LOHHLA` algorithm with sole purpose of providing a tool for better integration with current biomarker analysis pipeline. It is free to use and to be modified for all non-commercial parties. All commercial use and modification of `lohhlamod`, including transfer, sale or license to a commercial third party or use on behalf of a commercial third-party (including but not limited to use as part of a service supplied to any third-party for financial reward) is not permitted.
+- `lohhlamod` fully respects all [LICENSE requirments](https://bitbucket.org/mcgranahanlab/lohhla/src/master/) imposed by the original `LOHHLA` tool.
+- I am currently checking with the original authors of `LOHHLA` package, and will update license file once I get confirmation. For now, `lohhlamod` is free to use for all non-commercial parties.
 
 ## Disclaimer
 
 - I, by no means, intent to overtake the origianl idea, implementation, and copyright of the original `LOHHLA` algorithm.
-- This repo opens does not distribute `LOHHLA` package, as well as all its dependent third-party parties that are under commercial licenses.
-- `lohhlamod` does not necessarily produce identical result as `LOHHLA` on estimates of copy numbers and related metrics.
+- This repo does not distribute `LOHHLA` package, as well as all its dependent third-party parties that are under commercial licenses.
+- `lohhlamod` does not necessarily produce identical result as `LOHHLA`, including but not limited to estimates of copy numbers, logR, BAF, plots, etc.
 - Please interpret result at your own discretion when using `lohhlamod`. I simulated a few datasets to demonstrate the performance of `lohhlamod` in the most ideal settings.
 
 ## Citation
 
-Please cite the original [HLALOH](https://doi.org/10.1016/j.cell.2017.10.001) paper.
+Please cite the original [HLALOH](https://doi.org/10.1016/j.cell.2017.10.001) paper and its [Bitbucket](https://bitbucket.org/mcgranahanlab/lohhla/src/master/) repository.
 
 If you use `lohhlamod`, please kindly cite this github repo as well.
