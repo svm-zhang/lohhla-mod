@@ -1,8 +1,8 @@
-`lohhlamod` uses [mamba](https://github.com/mamba-org/mamba) and [boa](https://github.com/mamba-org/boa) as package manager and builder.
+`lohhla-mod` uses [mamba](https://github.com/mamba-org/mamba) and [boa](https://github.com/mamba-org/boa) as package manager and builder.
 
 ## Linux (linux-64)
 
-To install `lohhlamod` on a LINUX platform, simply run the following:
+To install `lohhla-mod` on a LINUX platform, simply run the following:
 
 ```
 cd "$lohhlamod_repo"
@@ -36,12 +36,13 @@ options:
 ## MacOS (osx-arm64, bash)
 
 Installation on OSX-64 requires a few additional steps prior to running `boa build`:
-* You need to switch to `bash` shell
-* Set `subdirs` to `osx-64` in your `.condarc` or `.mambarc` config file
+
+- You need to switch to `bash` shell
+- Set `subdirs` to `osx-64` in your `.condarc` or `.mambarc` config file
 
 ## Manual
 
-It is also possible to install `lohhlamod` without any package manager and builder. The `recipe.yaml` file defines run-time dependencies. You can install them on your local machine/environment as you see fit. Once everything installed, running the code below should get you going:
+It is also possible to install `lohhla-mod` without any package manager and builder. The `recipe.yaml` file defines run-time dependencies. You can install them on your local machine/environment as you see fit. Once everything installed, running the code below should get you going:
 
 ```
 bin_dir="${lohhlamod_repo}/bin"
@@ -52,4 +53,4 @@ export R_LIBS="$lohhlamod_repo:$R_LIBS"
 export PATH="$bin_dir:$PATH"
 ```
 
-If you want to run `lohhlamod` everytime you open a session, simply add the last two lines to your  `~/.bash_profile` file.
+If you want to run `lohhla-mod` everytime you open a session, simply add the last two lines to your `~/.bash_profile` file.
