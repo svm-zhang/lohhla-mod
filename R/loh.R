@@ -207,26 +207,16 @@ estimate_cn_conf <- function(cn_dt, which) {
   list(est_lower = cn_est_lower, est_upper = cn_est_upper)
 }
 
-# FIXME: ugly and should make it simpler
+# Note: this is a much cleaner impl and should prevent the sd bug when
+# there are NAs in data. However, the design of this function is still bad.
 t_test_with_na <- function(x, alternative = "two.sided", mu = 0, return_p = FALSE) {
-  x <- as.numeric(x)
-  if (length(x[!is.na(x)]) <= 1) {
-    if (return_p) {
-      return(NaN)
-    }
-    return(NA)
+  x <- x[!is.na(as.numeric(x))]
+  if (length(x) < 2 || sd(x) == 0) {
+    return(if (return_p) NaN else NA)
   }
-  # when no deviation in the bin
-  if (sd(x) == 0) {
-    if (return_p) {
-      return(NaN)
-    }
-    return(NA)
-  }
+
   test <- t.test(x, alternative = alternative, mu = mu)
-  if (return_p) {
-    return(test$p.value)
-  }
+  if (return_p) return (test$p.value)
   return(test)
 }
 
