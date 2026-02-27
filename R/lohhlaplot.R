@@ -18,11 +18,11 @@ parse_cmd <- function() {
     metavar = "STR", type = "character", required = TRUE,
     help = "Specify sample ID/name"
   )
-  parser$add_argument("--loh_res",
+  parser$add_argument("--loh-res",
     metavar = "FILE", type = "character", required = TRUE,
     help = "Specify path to the HLA LOH result"
   )
-  parser$add_argument("--loh_dir",
+  parser$add_argument("--loh-dir",
     metavar = "DIR", type = "character", required = TRUE,
     help = "Specify path to the base directory of HLA LOH result"
   )

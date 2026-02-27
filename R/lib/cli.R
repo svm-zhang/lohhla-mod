@@ -26,11 +26,11 @@ parse_cmd <- function() {
     metavar = "DIR", type = "character", required = TRUE,
     help = "Specify the output directory"
   )
-  parser$add_argument("--min_cov",
+  parser$add_argument("--min-cov",
     metavar = "INT", type = "integer", default = 30,
     help = "Specify the minimum coverage at mismatch sites (30)"
   )
-  parser$add_argument("--min_necnt",
+  parser$add_argument("--min-necnt",
     metavar = "INT", type = "integer", default = 1,
     help = paste(
       "Specify the minimum number of diff events",
