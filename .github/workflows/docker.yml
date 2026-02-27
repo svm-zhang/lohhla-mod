@@ -32,11 +32,11 @@ jobs:
       - name: Run lohhlamod on test data
         run: |
           docker compose run --rm lohhlamod lohhlamod \
-            --tbam ./simulation/s6/t.bam \
-            --nbam ./simulation/s6/n.bam \
             --subject s6 \
-            --hlaref ./simulation/s6/hla.fasta \
-            --tstates ./simulation/s6/tstates.tsv \
+            --tbam ./simulation/s6/input/s6_t.hla.realn.ready.bam \
+            --nbam ./simulation/s6/input/s6_n.hla.realn.ready.bam \
+            --hlaref ./simulation/s6/input/s6_n.hla.fasta \
+            --tstates ./simulation/s6/input/tstates.tsv \
             --outdir ./test_output
 
       # 3. Run the lohhlaplot test command
