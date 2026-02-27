@@ -44,7 +44,7 @@ jobs:
         run: |
           docker compose run --rm lohhlamod lohhlaplot \
             --sample s6 \
-            --loh-res ./test_output/loh_results.tsv \
+            --loh-res ./test_output/s6.loh.res.tsv \
             --loh-dir ./test_output
 
       # 4. Verify output on test data
