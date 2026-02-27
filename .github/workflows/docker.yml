@@ -1,0 +1,60 @@
+name: Test docker build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "R/**"
+      - Dockerfile
+      - docker-compose.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - "R/**"
+      - Dockerfile
+      - docker-compose.yml
+  workflow_dispatch:
+
+jobs:
+  test-suite:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # 1. Build the image using Compose
+      - name: Build Image
+        run: docker compose build --no-cache --pull
+
+      # 2. Runt lohhlamod
+      - name: Run lohhlamod on test data
+        run: |
+          docker compose run --rm lohhlamod lohhlamod \
+            --subject s6 \
+            --tbam ./simulation/s6/input/s6_t.hla.realn.ready.bam \
+            --nbam ./simulation/s6/input/s6_n.hla.realn.ready.bam \
+            --hlaref ./simulation/s6/input/s6_n.hla.fasta \
+            --tstates ./simulation/s6/input/tstates.tsv \
+            --outdir ./test_output
+
+      # 3. Run the lohhlaplot test command
+      - name: Run lohhlaplot Integration Test
+        run: |
+          docker compose run --rm lohhlamod lohhlaplot \
+            --sample s6 \
+            --loh-res ./test_output/s6.loh.res.tsv \
+            --loh-dir ./test_output
+
+      # 4. Verify output on test data
+      - name: Verify Results
+        run: |
+          docker compose run --rm lohhlamod Rscript -e "
+            library(data.table);
+            exp <- fread('./simulation/s6/output/s6.loh.res.tsv');
+            obs <- fread('./test_output/s6.loh.res.tsv');
+            if(!isTRUE(all.equal(exp, obs, tolerance=1e-6))) {
+              stop('Observed results do not match expected simulation results!');
+            }
+          "

@@ -1,0 +1,8 @@
+services:
+  lohhlamod:
+    image: lohhlamod:${VERSION:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/lohhla_runs
