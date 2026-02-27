@@ -43,6 +43,7 @@ jobs:
       - name: Run lohhlaplot Integration Test
         run: |
           docker compose run --rm lohhlamod lohhlaplot \
+            --sample s6 \
             --loh-res ./test_output/loh_results.tsv \
             --loh-dir ./test_output
 
