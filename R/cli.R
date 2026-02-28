@@ -1,7 +1,6 @@
-require(argparse)
 
 parse_cmd <- function() {
-  parser <- ArgumentParser()
+  parser <- argparse::ArgumentParser()
   parser$add_argument("--subject",
     metavar = "STR", type = "character", required = TRUE,
     help = "Specify the subject ID"
