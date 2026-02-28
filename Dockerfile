@@ -13,35 +13,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     liblzma-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install remotes to manage specific versions
-RUN R -e "install.packages('remotes', repos='http://cran.rstudio.com/')"
+RUN R -e "install.packages(c('remotes', 'BiocManager'), repos='http://cran.rstudio.com/')"
 
-# Install CRAN packages
-# Note: we use remotes::install_version for splitstackshape to match your 1.4.8 requirement
-RUN R -e "install.packages(c( \
-  'argparse', \
-  'data.table', \
-  'ggplot2', \
-  'R.utils', \
-  'seqinr', \
-  'splitstackshape' \
-  ), repos='http://cran.rstudio.com/')"
+RUN mkdir -p /opt/lohhlamod
 
-# Install Bioconductor manager and packages
-RUN R -e "install.packages('BiocManager', repos='http://cran.rstudio.com/')" \
-    && R -e "BiocManager::install(c('Biostrings', 'Rsamtools'))"
+WORKDIR /opt/lohhlamod
+# This way avoids to rebuild dependencies using layer caching
+COPY DESCRIPTION .
+RUN R -e "remotes::install_deps(dependencies = TRUE, repos = BiocManager::repositories())"
 
-# Manually create a r_lib folder
-RUN mkdir -p /usr/local/lib/R/site-library/lohhlamod
-
-# Manually copy libraries to the r_lib folder
-COPY R/lib/*.R /usr/local/lib/R/site-library/lohhlamod/
-ENV R_LIBS_USER=/usr/local/lib/R/site-library
+# Only build the library every time changes are made
+COPY . .
+RUN R -e "remotes::install_local()"
 
 # Call as binaries b/c of shebang
-COPY R/lohhlamod.R /usr/local/bin/lohhlamod
-COPY R/lohhlaplot.R /usr/local/bin/lohhlaplot
-RUN chmod +x /usr/local/bin/lohhlamod /usr/local/bin/lohhlaplot
+RUN chmod +x /opt/lohhlamod/lohhlamod.R /opt/lohhlamod/lohhlaplot.R
+RUN ln -s /opt/lohhlamod/lohhlamod.R /usr/local/bin/lohhlamod
+RUN ln -s /opt/lohhlamod/lohhlaplot.R /usr/local/bin/lohhlaplot
 
 # This should match the map point in compose config
 WORKDIR /lohhla_runs
