@@ -1,13 +1,9 @@
 #!/usr/bin/env -S Rscript --vanilla
 
 suppressPackageStartupMessages({
-  library(argparse)
   library(data.table)
-  library(ggplot2)
   library(splitstackshape)
-  library(seqinr)
-  library(Biostrings)
-  library(Rsamtools)
+  library(lohhlamod)
 })
 
 options(width = 600)
@@ -65,20 +61,7 @@ make_bins_old <- function(allele, aln, allele_length, bin_size = 150) {
   bin_dt
 }
 
-initialize_libs <- function() {
-  pkg_name <- "lohhlamod"
-  libpaths <- file.path(.libPaths(), pkg_name)
-  lib_pattern <- "(bamer|cli|loh|pairwise_aln|pathio).R"
-  rscripts <- list.files(libpaths, lib_pattern, full.names = TRUE, recursive = TRUE)
-  if (length(rscripts) == 0) {
-    print("[ERROR] Found no related R script libraries to run lohhlamod")
-    quit(status = 1)
-  }
-  invisible(sapply(rscripts, source))
-}
-
 main <- function() {
-  initialize_libs()
 
   gamma <- 1
 

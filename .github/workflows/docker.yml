@@ -4,15 +4,19 @@ on:
   push:
     branches: [main]
     paths:
-      - "R/**"
-      - Dockerfile
-      - docker-compose.yml
+      - "**/*.R"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "DESCRIPTION"
+      - "NAMESPACE"
   pull_request:
     branches: [main]
     paths:
-      - "R/**"
-      - Dockerfile
-      - docker-compose.yml
+      - "**/*.R"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "DESCRIPTION"
+      - "NAMESPACE"
   workflow_dispatch:
 
 jobs:
@@ -26,7 +30,7 @@ jobs:
 
       # 1. Build the image using Compose
       - name: Build Image
-        run: docker compose build --no-cache --pull
+        run: docker compose build --pull
 
       # 2. Runt lohhlamod
       - name: Run lohhlamod on test data
@@ -54,7 +58,10 @@ jobs:
             library(data.table);
             exp <- fread('./simulation/s6/output/s6.loh.res.tsv');
             obs <- fread('./test_output/s6.loh.res.tsv');
-            if(!isTRUE(all.equal(exp, obs, tolerance=1e-6))) {
+            diffs <- all.equal(exp, obs, tolerance=1e-6)
+            if(!isTRUE(diffs)) {
+              print(diffs)
               stop('Observed results do not match expected simulation results!');
             }
+            cat('SUCCESS: Observed results match expected simulation.\n')
           "

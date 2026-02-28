@@ -1,37 +1,34 @@
-require(Biostrings)
-require(data.table)
-require(seqinr)
 
 # https://rdrr.io/bioc/Biostrings/src/R/PairwiseAlignments-io.R
 # using .pre2postaligned function in writePariwiseAlignments function
 extract_aln_in_pos <- function(axset) {
-  pos <- seq(start(axset@range), end(axset@range))
-  data.table(
+  pos <- seq(Biostrings::start(axset@range), Biostrings::end(axset@range))
+  data.table::data.table(
     pos = pos,
     pa_pos = Biostrings:::.pre2postaligned(pos, axset)
   )
 }
 
 get_mismatches_bw_alleles <- function(a1, a2, hlaref) {
-  hla_seq <- read.fasta(hlaref)
+  hla_seq <- seqinr::read.fasta(hlaref)
   a1_seq <- hla_seq[[a1]]
   a2_seq <- hla_seq[[a2]]
-  sigma <- nucleotideSubstitutionMatrix(
+  sigma <- Biostrings::nucleotideSubstitutionMatrix(
     match = 2, mismatch = -1, baseOnly = TRUE
   )
-  pair_aln <- pairwiseAlignment(
-    DNAString(paste(toupper(a1_seq), collapse = "")),
-    DNAString(paste(toupper(a2_seq), collapse = "")),
+  pair_aln <- Biostrings::pairwiseAlignment(
+    Biostrings::DNAString(paste(toupper(a1_seq), collapse = "")),
+    Biostrings::DNAString(paste(toupper(a2_seq), collapse = "")),
     substitutionMatrix = sigma, gapOpening = -2, gapExtension = -4,
     scoreOnly = FALSE, type = "local"
   )
-  a1_aln <- pattern(pair_aln) # Get the pair_aln for the first sequence
-  a2_aln <- subject(pair_aln) # Get the pair_aln for the second sequence
+  a1_aln <- Biostrings::pattern(pair_aln) # Get the pair_aln for the first sequence
+  a2_aln <- Biostrings::subject(pair_aln) # Get the pair_aln for the second sequence
 
-  a1_aln_start <- start(pattern(pair_aln))
-  a1_aln_end <- end(pattern(pair_aln))
-  a2_aln_start <- start(subject(pair_aln))
-  a2_aln_end <- end(subject(pair_aln))
+  a1_aln_start <- Biostrings::start(a1_aln)
+  a1_aln_end <- Biostrings::end(a1_aln)
+  a2_aln_start <- Biostrings::start(a2_aln)
+  a2_aln_end <- Biostrings::end(a2_aln)
 
   p_aln <- extract_aln_in_pos(axset = a1_aln)
   s_aln <- extract_aln_in_pos(axset = a2_aln)

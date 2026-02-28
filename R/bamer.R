@@ -1,9 +1,7 @@
-require(Rsamtools)
-require(data.table)
 
 extract_bam_header <- function(bam) {
-  bf <- BamFile(bam)
-  scanBamHeader(bf)
+  bf <- Rsamtools::BamFile(bam)
+  Rsamtools::scanBamHeader(bf)
 }
 
 extract_seqinfo_from_bam <- function(bam) {
@@ -48,14 +46,14 @@ extract_rgsm_from_bam_header <- function(bam) {
 count_n_reads_from_bam <- function(bam, which, tagfilter = list()) {
   seqinfo <- extract_seqinfo_from_bam(bam = bam)
   allele_seq_ln <- seqinfo[which(names(seqinfo) %in% which)]
-  dt <- data.table(seqnames = names(allele_seq_ln), end = allele_seq_ln)
+  dt <- data.table::data.table(seqnames = names(allele_seq_ln), end = allele_seq_ln)
   dt[, start := 1]
   allele_to_scan <- GenomicRanges::makeGRangesFromDataFrame(dt)
-  count_n_reads_df <- countBam(
+  count_n_reads_df <- Rsamtools::countBam(
     bam,
-    param = ScanBamParam(
+    param = Rsamtools::ScanBamParam(
       which = allele_to_scan,
-      flag = scanBamFlag(
+      flag = Rsamtools::scanBamFlag(
         isDuplicate = FALSE,
         isProperPair = TRUE,
         isNotPassingQualityControls = FALSE,
@@ -77,29 +75,29 @@ get_indel_length <- function(cigar) {
 }
 
 filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
-  bamf <- BamFile(file = bam)
+  bamf <- Rsamtools::BamFile(file = bam)
 
   # including secondary alignments, otherwise, one random
   # allele out of 2 has more coverage than expected, while
   # the other has lower-than-expected coverage
-  scanflag <- scanBamFlag(
+  scanflag <- Rsamtools::scanBamFlag(
     isProperPair = TRUE, isSecondaryAlignment = NA, isDuplicate = FALSE,
     isNotPassingQualityControls = FALSE, isSupplementaryAlignment = FALSE
   )
-  scan_param <- ScanBamParam(
+  scan_param <- Rsamtools::ScanBamParam(
     flag = scanflag,
     what = c("qname", "flag", "cigar"),
     tag = "NM"
   )
-  aln <- scanBam(bamf, param = scan_param)
-  aln_dt <- data.table(
+  aln <- Rsamtools::scanBam(bamf, param = scan_param)
+  aln_dt <- data.table::data.table(
     qname = aln[[1]]$qname,
     cigar = aln[[1]]$cigar,
     flag = aln[[1]]$flag,
     nm = unlist(aln[[1]]$tag)
   )
   aln_dt[, read_idx := ifelse(
-    bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
+    Rsamtools::bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
   ),
   by = seq_len(nrow(aln_dt))
   ]
@@ -130,11 +128,11 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
   filter <- S4Vectors::FilterRules(
     list(function(x) x$qname %in% aln_dt$qname)
   )
-  obam <- filterBam(bamf, obam, filter = filter, param = scan_param)
+  obam <- Rsamtools::filterBam(bamf, obam, filter = filter, param = scan_param)
 }
 
 extract_allele_coverage <- function(allele, bam, hlaref, min_dp = 0) {
-  dt <- fread(text = system2(
+  dt <- data.table::fread(text = system2(
     command = "samtools",
     args = c(
       "mpileup", "-f", hlaref,
@@ -171,19 +169,19 @@ get_allele_coverage <- function(allele, bam, min_dp = 0) {
     seqnames = allele,
     ranges = IRanges::IRanges(start = 1, end = allele_seq_ln)
   )
-  scanflag <- scanBamFlag(
+  scanflag <- Rsamtools::scanBamFlag(
     isProperPair = TRUE, isSecondaryAlignment = FALSE, isDuplicate = FALSE,
     isNotPassingQualityControls = FALSE, isSupplementaryAlignment = FALSE
   )
-  scan_param <- ScanBamParam(
+  scan_param <- Rsamtools::ScanBamParam(
     flag = scanflag,
     mapqFilter = 20,
     which = allele_to_scan,
   )
-  pileup_param <- PileupParam(
+  pileup_param <- Rsamtools::PileupParam(
     min_mapq = 20, distinguish_strands = FALSE, max_depth = 9999
   )
-  p_dt <- setDT(
+  p_dt <- data.table::setDT(
     pileup(
       file = bam, scanBamParam = scan_param, pileupParam = pileup_param
     )

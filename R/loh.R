@@ -1,5 +1,3 @@
-require(data.table)
-
 prep_allelic_cov <- function(t_dt, n_dt, bin_dt, multfactor) {
   cov_dt <- combine_tn_cov(t_dt = t_dt, n_dt = n_dt)
   cov_dt <- bin_allele_cov(cov_dt = cov_dt, bin_dt = bin_dt)
@@ -113,7 +111,7 @@ estimate_binned_logr <- function(a1_dt, a2_dt, multfactor) {
 }
 
 prep_mm_cov <- function(mm, a1_dt, a2_dt) {
-  mm_est_dt <- data.table(a1_pos = mm$diffSeq1, a2_pos = mm$diffSeq2)
+  mm_est_dt <- data.table::data.table(a1_pos = mm$diffSeq1, a2_pos = mm$diffSeq2)
   mm_est_dt <- mm_est_dt[
     a1_pos %in% a1_dt$a1_pos & a2_pos %in% a2_dt$a2_pos
   ]
