@@ -1,0 +1,18 @@
+Package: lohhlamod
+Title: HLA LOH detection algorithm
+Version: 0.2.0
+Authors@R: person("Simo", "Zhang", email = "3883886+svm-zhang@users.noreply.github.com", role = c("aut", "cre"))
+Description: A command line tool for detecting HLA LOH event in tumor sample.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+biocViews: 
+Imports: 
+    argparse,
+    data.table,
+    ggplot2,
+    R.utils,
+    seqinr,
+    splitstackshape,
+    Biostrings,
+    Rsamtools
