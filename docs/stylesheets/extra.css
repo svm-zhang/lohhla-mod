@@ -1,0 +1,40 @@
+@font-face {
+  font-family: "DejaVu Sans Mono";
+  src: url("../assets/fonts/DejaVuSansMono.ttf") format("truetype");
+}
+
+:root {
+  --md-code-font: "DejaVu Sans Mono";
+}
+
+code {
+  font-weight: 400;
+}
+
+.md-nav {
+  font-size: 0.85rem;
+}
+
+.md-typeset {
+  font-size: 0.85rem;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  color: var(--md-default-fg-color--dark);
+  font-weight: 600;
+}
+
+.md-typeset code {
+  font-size: 0.85em;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.8rem;
+}
+
+.md-typeset .admonitions,
+.md-typeset details {
+  font-size: 0.85rem;
+}
