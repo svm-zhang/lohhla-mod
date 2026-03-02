@@ -96,11 +96,12 @@ filter_bam_by_ecnt <- function(bam, obam, min_necnt = 1) {
     flag = aln[[1]]$flag,
     nm = unlist(aln[[1]]$tag)
   )
-  aln_dt[, read_idx := ifelse(
-    Rsamtools::bamFlagAsBitMatrix(as.integer(flag))[7] == 1, 1, 2
-  ),
-  by = seq_len(nrow(aln_dt))
-  ]
+  # Use vectorized operation. No need to do it per-row and create
+  # a matrix every time. I dont need to check if equals 64 or 128,
+  # because I scan the BAM with the isProperPair=True above.
+  aln_dt[, read_idx := data.table::fcase(
+    bitwAnd(as.integer(flag), 64) > 0, 1, default=2
+  )]
   if (nrow(aln_dt) == 0) {
     print(paste(
       "[ERROR] Found no alignments in the give BAM: ", bam,
