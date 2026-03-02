@@ -26,7 +26,7 @@ docker compose build --pull
 
 ## Run LOH analysis
 
-Please refer to the [documentation](https://svm-zhang.github.io/lohhlamod/) for details.
+Please refer to the [documentation](https://svm-zhang.github.io/lohhla-mod/) for details.
 
 ## Citation
 
