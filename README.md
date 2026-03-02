@@ -1,11 +1,11 @@
 <h1>
-    lohhla-mod
+    lohhlamod
 </h1>
 
 
 ## Introduction
 
-`lohhla-mod` is the original [LOHHLA](https://doi.org/10.1016/j.cell.2017.10.001) algorithm re-engineered in modern style that
+`lohhlamod` is the original [LOHHLA](https://doi.org/10.1016/j.cell.2017.10.001) algorithm re-engineered in modern style that
 
 - offers additional features/metrics for better interpretation
 - offers runtime speedup
